@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Bound dashboard — configure your community, safety, economy and staff systems." />
+  <meta name="description" content="Bound dashboard — configure your community, safety, factions and staff systems." />
   <title>Bound Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,86 +14,32 @@
   <div class="app-shell">
     <aside class="sidebar" id="sidebar">
       <a class="dash-brand" href="index.html" aria-label="Bound home"><span class="logo"><img src="bound-logo.png" alt="Bound logo"></span><div><strong>Bound</strong><small>CONTROL CENTRE</small></div></a>
-      <div class="server-card" id="serverCard">
-        <span class="server-icon" id="serverIcon">B</span>
-        <div class="server-copy"><small>ACTIVE SERVER</small><strong id="serverName">Choose a server</strong></div>
-        <button class="icon-btn" id="serverPickerBtn" aria-label="Choose server">⌄</button>
-      </div>
+      <div class="server-card" id="serverCard"><span class="server-icon" id="serverIcon">B</span><div class="server-copy"><small>ACTIVE SERVER</small><strong id="serverName">Choose a server</strong></div><button class="icon-btn" id="serverPickerBtn" aria-label="Choose server">⌄</button></div>
       <div class="server-picker" id="serverPicker" hidden></div>
       <nav class="side-nav" aria-label="Dashboard navigation">
-        <small class="nav-label">GENERAL</small>
-        <button class="nav-item active" data-view="overview"><span>⌂</span>Overview</button>
-        <button class="nav-item" data-view="profile"><span>◉</span>My Bound Profile</button>
-        <button class="nav-item" data-view="servers"><span>◇</span>Servers</button>
-        <small class="nav-label">SYSTEMS</small>
-        <button class="nav-item" data-view="safety"><span>◆</span>Safety & Consent <em>3</em></button>
-        <button class="nav-item" data-view="moderation"><span>⌁</span>Moderation</button>
-        <button class="nav-item" data-view="tickets"><span>▱</span>Tickets & Support</button>
-        <button class="nav-item" data-view="economy"><span>₦</span>Economy</button>
-        <button class="nav-item" data-view="staff"><span>♙</span>Staff</button>
-        <button class="nav-item" data-view="roleplay"><span>♡</span>Social & RP</button>
-        <small class="nav-label">SETTINGS</small>
-        <button class="nav-item" data-view="logs"><span>≣</span>Audit Log</button>
-        <button class="nav-item" data-view="settings"><span>⚙</span>Server Settings</button>
+        <small class="nav-label">GENERAL</small><button class="nav-item active" data-view="overview"><span>⌂</span>Overview</button><button class="nav-item" data-view="profile"><span>◉</span>My Bound Profile</button><button class="nav-item" data-view="servers"><span>◇</span>Servers</button>
+        <small class="nav-label">SYSTEMS</small><button class="nav-item" data-view="safety"><span>◆</span>Safety & Consent <em>3</em></button><button class="nav-item" data-view="moderation"><span>⌁</span>Moderation</button><button class="nav-item" data-view="tickets"><span>▱</span>Tickets & Support</button><button class="nav-item" data-view="economy"><span>₦</span>Factions</button><button class="nav-item" data-view="staff"><span>♙</span>Staff</button><button class="nav-item" data-view="roleplay"><span>♡</span>Social & RP</button>
+        <small class="nav-label">SETTINGS</small><button class="nav-item" data-view="logs"><span>≣</span>Audit Log</button><button class="nav-item" data-view="settings"><span>⚙</span>Server Settings</button>
       </nav>
-      <div class="sidebar-bottom">
-        <a href="index.html" class="support-link">← Back to Bound</a>
-        <div class="user-chip" id="userChip"><div class="user-avatar" id="userAvatar">?</div><div><strong id="userName">Not signed in</strong><small id="userRole">Discord account</small></div><button class="icon-btn" id="logoutBtn" title="Sign out">↪</button></div>
-      </div>
+      <div class="sidebar-bottom"><a href="index.html" class="support-link">← Back to Bound</a><div class="user-chip" id="userChip"><div class="user-avatar" id="userAvatar">?</div><div><strong id="userName">Not signed in</strong><small id="userRole">Discord account</small></div><button class="icon-btn" id="logoutBtn" title="Sign out">↪</button></div></div>
     </aside>
-
     <main class="dashboard-main">
-      <header class="topbar">
-        <div class="topbar-left"><button class="menu-btn" id="menuBtn">☰</button><div><small>BOUND / THE DARK SIDE</small><h1 id="pageTitle">Overview</h1></div></div>
-        <div class="topbar-actions"><button class="status-pill"><i></i> Bound Online</button><a class="top-btn" href="https://discord.gg/NVseqMDNRd" target="_blank" rel="noopener noreferrer">Support</a><button class="notification" id="loginBtn">Discord Login</button></div>
-      </header>
-
+      <header class="topbar"><div class="topbar-left"><button class="menu-btn" id="menuBtn">☰</button><div><small>BOUND / THE DARK SIDE</small><h1 id="pageTitle">Overview</h1></div></div><div class="topbar-actions"><button class="status-pill"><i></i> Bound Online</button><a class="top-btn" href="https://discord.gg/NVseqMDNRd" target="_blank" rel="noopener noreferrer">Support</a><button class="notification" id="loginBtn">Discord Login</button></div></header>
       <div class="dashboard-content">
         <section class="view active" id="view-overview">
-          <div class="welcome-card">
-            <div class="welcome-copy"><span class="eyebrow">WELCOME BACK</span><h2>Your server is <span>fully Bound.</span></h2><p>See what’s happening, manage your systems and keep your community running from one place.</p><div class="welcome-actions"><button class="primary-action" data-jump="settings">Configure server</button><button class="ghost-action" data-jump="logs">View activity</button></div></div>
-            <div class="health-orb"><div class="orb-ring ring-a"></div><div class="orb-ring ring-b"></div><div class="health-core"><b>99.9%</b><small>HEALTH</small></div></div>
-          </div>
-
-          <div class="metric-grid">
-            <article class="metric-card"><div class="metric-head"><span class="metric-icon">◉</span><small>MEMBERS</small></div><strong id="metricGuildStatus">—</strong><p><b id="metricTos">—</b> activation</p></article>
-            <article class="metric-card"><div class="metric-head"><span class="metric-icon">◇</span><small>ACTIVE TODAY</small></div><strong id="metricVerified">—</strong><p><b>Verification</b> configured</p></article>
-            <article class="metric-card"><div class="metric-head"><span class="metric-icon">▱</span><small>OPEN TICKETS</small></div><strong id="metricSafety">—</strong><p><b>Safety</b> items pending</p></article>
-            <article class="metric-card"><div class="metric-head"><span class="metric-icon">₦</span><small>NUGS IN CIRCULATION</small></div><strong id="metricNugs">—</strong><p><b id="metricEconomyUsers">—</b> global users</p></article>
-          </div>
-
-          <div class="dashboard-grid">
-            <article class="panel activity-panel"><div class="panel-title"><div><small>LIVE ACTIVITY</small><h3>What’s happening</h3></div><button class="text-btn" data-jump="logs">View all</button></div><div class="activity-list" id="activityList"></div></article>
-            <article class="panel"><div class="panel-title"><div><small>SYSTEM STATUS</small><h3>Bound services</h3></div><span class="all-good">ALL GOOD</span></div><div class="service-list"><div><span><i></i>Discord gateway</span><b>Operational</b></div><div><span><i></i>Command API</span><b>Operational</b></div><div><span><i></i>Supabase</span><b>Operational</b></div><div><span><i></i>Webhooks</span><b>Operational</b></div></div><div class="uptime"><span>Last 30 days</span><div class="uptime-bars" id="uptimeBars"></div><b>99.99%</b></div></article>
-          </div>
-
-          <div class="dashboard-grid second-row">
-            <article class="panel"><div class="panel-title"><div><small>QUICK CONTROLS</small><h3>Server systems</h3></div></div><div class="quick-grid"><button data-jump="safety"><span>◆</span><b>Safety</b><small>3 items need review</small></button><button data-jump="tickets"><span>▱</span><b>Tickets</b><small>17 currently open</small></button><button data-jump="economy"><span>₦</span><b>Economy</b><small>Healthy circulation</small></button><button data-jump="staff"><span>♙</span><b>Staff</b><small>24 clocked in</small></button></div></article>
-            <article class="panel bound-score"><div class="panel-title"><div><small>BOUND SCORE</small><h3>Community health</h3></div></div><div class="score-wrap"><div class="score-ring"><strong>92</strong><small>/ 100</small></div><div class="score-copy"><b>Excellent</b><p>Verification, safety coverage and moderation response times are all healthy.</p><button class="text-btn">View breakdown →</button></div></div></article>
-          </div>
+          <div class="welcome-card"><div class="welcome-copy"><span class="eyebrow">WELCOME BACK</span><h2>Your server is <span>fully Bound.</span></h2><p>See what’s happening, manage your systems and keep your community running from one place.</p><div class="welcome-actions"><button class="primary-action" data-jump="settings">Configure server</button><button class="ghost-action" data-jump="logs">View activity</button></div></div><div class="health-orb"><div class="orb-ring ring-a"></div><div class="orb-ring ring-b"></div><div class="health-core"><b>99.9%</b><small>HEALTH</small></div></div></div>
+          <div class="metric-grid"><article class="metric-card"><div class="metric-head"><span class="metric-icon">◉</span><small>MEMBERS</small></div><strong id="metricGuildStatus">—</strong><p><b id="metricTos">—</b> activation</p></article><article class="metric-card"><div class="metric-head"><span class="metric-icon">◇</span><small>ACTIVE TODAY</small></div><strong id="metricVerified">—</strong><p><b>Verification</b> configured</p></article><article class="metric-card"><div class="metric-head"><span class="metric-icon">▱</span><small>OPEN TICKETS</small></div><strong id="metricSafety">—</strong><p><b>Safety</b> items pending</p></article><article class="metric-card"><div class="metric-head"><span class="metric-icon">₦</span><small>NUGS IN CIRCULATION</small></div><strong id="metricNugs">—</strong><p><b id="metricEconomyUsers">—</b> global users</p></article></div>
+          <div class="dashboard-grid"><article class="panel activity-panel"><div class="panel-title"><div><small>LIVE ACTIVITY</small><h3>What’s happening</h3></div><button class="text-btn" data-jump="logs">View all</button></div><div class="activity-list" id="activityList"></div></article><article class="panel"><div class="panel-title"><div><small>SYSTEM STATUS</small><h3>Bound services</h3></div><span class="all-good">ALL GOOD</span></div><div class="service-list"><div><span><i></i>Discord gateway</span><b>Operational</b></div><div><span><i></i>Command API</span><b>Operational</b></div><div><span><i></i>Supabase</span><b>Operational</b></div><div><span><i></i>Webhooks</span><b>Operational</b></div></div><div class="uptime"><span>Last 30 days</span><div class="uptime-bars" id="uptimeBars"></div><b>99.99%</b></div></article></div>
+          <div class="dashboard-grid second-row"><article class="panel"><div class="panel-title"><div><small>QUICK CONTROLS</small><h3>Server systems</h3></div></div><div class="quick-grid"><button data-jump="safety"><span>◆</span><b>Safety</b><small>3 items need review</small></button><button data-jump="tickets"><span>▱</span><b>Tickets</b><small>17 currently open</small></button><button data-jump="economy"><span>₦</span><b>Factions</b><small>Nugs, shops & faction activity</small></button><button data-jump="staff"><span>♙</span><b>Staff</b><small>24 clocked in</small></button></div></article><article class="panel bound-score"><div class="panel-title"><div><small>BOUND SCORE</small><h3>Community health</h3></div></div><div class="score-wrap"><div class="score-ring"><strong>92</strong><small>/ 100</small></div><div class="score-copy"><b>Excellent</b><p>Verification, safety coverage and moderation response times are all healthy.</p><button class="text-btn">View breakdown →</button></div></div></article></div>
         </section>
-
         <section class="view" id="view-safety"><div class="section-heading"><span class="eyebrow">BOUND SAFETY</span><h2>Safety & consent</h2><p>Review reports, isolation controls and user data requests.</p></div><div class="metric-grid compact"><article class="metric-card"><small>OPEN FLAGS</small><strong id="safetyOpen">—</strong><p>Needs review</p></article><article class="metric-card"><small>ACTIVE CAGES</small><strong id="safetyCages">—</strong><p>Private isolation</p></article><article class="metric-card"><small>ACTIVE GAGS</small><strong id="safetyGags">—</strong><p>This server</p></article><article class="metric-card"><small>NETWORK</small><strong id="safetyNetwork">—</strong><p>Safety configuration</p></article></div><div class="panel table-panel"><div class="panel-title"><div><small>REVIEW QUEUE</small><h3>Safety items</h3></div><button class="filter-btn">Filter ⌄</button></div><div class="data-table"><div class="table-head"><span>User</span><span>Type</span><span>Created</span><span>Risk</span><span>Status</span></div><div id="safetyRows"></div></div></div></section>
-
-        <section class="view" id="view-economy"><div class="section-heading"><span class="eyebrow">NUGS ECONOMY</span><h2>Economy control</h2><p>Monitor balances, activity, rewards and server shop settings.</p></div><div class="metric-grid compact"><article class="metric-card"><small>GLOBAL CIRCULATION</small><strong id="economyCirculation">—</strong><p>Nugs</p></article><article class="metric-card"><small>PLAYER RECORDS</small><strong id="economyUsers">—</strong><p>Global economy users</p></article><article class="metric-card"><small>SERVER SCOPE</small><strong>Global</strong><p>Current Bound schema</p></article><article class="metric-card"><small>LIVE SYNC</small><strong id="economySync">Ready</strong><p>Reads Supabase</p></article></div><div class="dashboard-grid"><article class="panel"><div class="panel-title"><div><small>ECONOMY SETTINGS</small><h3>Core configuration</h3></div><button class="primary-mini" id="saveEconomy" disabled>Needs economy config table</button></div><div class="settings-list"><label><span><b>Starting wallet</b><small>Balance given to a new member</small></span><input type="number" value="0" disabled></label><label><span><b>Daily reward</b><small>Base amount before bonuses</small></span><input type="number" value="350" disabled></label><label><span><b>Rob risk</b><small>How punishing failed robberies are</small></span><select disabled><option>Balanced</option></select></label><label><span><b>Economy enabled</b><small>Enable Nugs commands in this server</small></span><button class="switch on" disabled><i></i></button></label></div></article><article class="panel"><div class="panel-title"><div><small>TOP BALANCES</small><h3>Richest members</h3></div></div><div class="leaderboard"><div><em>1</em><span class="mini-avatar">M</span><b>ManlikeM</b><strong>842,110 ₦</strong></div><div><em>2</em><span class="mini-avatar">L</span><b>Luna</b><strong>611,420 ₦</strong></div><div><em>3</em><span class="mini-avatar">R</span><b>Raven</b><strong>492,884 ₦</strong></div><div><em>4</em><span class="mini-avatar">K</span><b>Kira</b><strong>440,712 ₦</strong></div></div></article></div></section>
-
+        <section class="view" id="view-economy"><div class="section-heading"><span class="eyebrow">BOUND FACTIONS</span><h2>Factions</h2><p>Manage the faction system, Nugs, rewards, shops and faction activity.</p></div><div class="metric-grid compact"><article class="metric-card"><small>NUGS IN CIRCULATION</small><strong id="economyCirculation">—</strong><p>Faction economy</p></article><article class="metric-card"><small>PLAYER RECORDS</small><strong id="economyUsers">—</strong><p>Faction & Nugs users</p></article><article class="metric-card"><small>FACTION SCOPE</small><strong>Global</strong><p>Bound faction network</p></article><article class="metric-card"><small>LIVE SYNC</small><strong id="economySync">Ready</strong><p>Reads Supabase</p></article></div><div class="dashboard-grid"><article class="panel"><div class="panel-title"><div><small>FACTION SETTINGS</small><h3>Nugs & rewards</h3></div><button class="primary-mini" id="saveEconomy" disabled>More controls coming</button></div><div class="settings-list"><label><span><b>Starting Nugs</b><small>Balance given to a new faction player</small></span><input type="number" value="0" disabled></label><label><span><b>Daily reward</b><small>Base Nugs before bonuses</small></span><input type="number" value="350" disabled></label><label><span><b>Rob risk</b><small>How punishing failed robberies are</small></span><select disabled><option>Balanced</option></select></label><label><span><b>Faction system</b><small>Factions includes the Bound Nugs economy</small></span><button class="switch on" disabled><i></i></button></label></div></article><article class="panel"><div class="panel-title"><div><small>TOP NUGS</small><h3>Richest faction players</h3></div></div><div class="leaderboard"><div><em>1</em><span class="mini-avatar">M</span><b>ManlikeM</b><strong>842,110 ₦</strong></div><div><em>2</em><span class="mini-avatar">L</span><b>Luna</b><strong>611,420 ₦</strong></div><div><em>3</em><span class="mini-avatar">R</span><b>Raven</b><strong>492,884 ₦</strong></div><div><em>4</em><span class="mini-avatar">K</span><b>Kira</b><strong>440,712 ₦</strong></div></div></article></div></section>
         <section class="view" id="view-settings"><div class="section-heading"><span class="eyebrow">SERVER CONFIGURATION</span><h2>Server settings</h2><p>Manage the Bound experience for this Discord server.</p></div><div class="settings-layout"><div class="panel settings-panel"><div class="settings-list"><label><span><b>Bound enabled</b><small>Master switch for server features</small></span><button class="switch on" disabled><i></i></button></label><label><span><b>Command prefix</b><small>Prefix used for text commands</small></span><input id="prefixInput" maxlength="5" value="£"></label><label><span><b>Welcome messages</b><small>Welcome newly verified users</small></span><button class="switch on" disabled><i></i></button></label><label><span><b>Level system</b><small>Track server activity levels</small></span><button class="switch on" disabled><i></i></button></label><label><span><b>Default log channel</b><small>Fallback destination for system logs</small></span><select disabled><option>Not yet stored in guild_settings</option></select></label><label><span><b>Timezone</b><small>Used for staff stats and scheduled resets</small></span><select disabled><option>Not yet stored in guild_settings</option></select></label></div><div class="settings-footer"><span id="saveState">No unsaved changes</span><button class="primary-action" id="saveSettings">Save settings</button></div></div><aside class="panel danger-panel"><small>DANGER ZONE</small><h3>Disconnect Bound</h3><p>Disconnecting removes dashboard access for this server but does not immediately delete stored audit data.</p><button>Disconnect server</button></aside></div></section>
-
         <section class="view generic-view" id="view-profile"></section><section class="view generic-view" id="view-servers"></section><section class="view generic-view" id="view-moderation"></section><section class="view generic-view" id="view-tickets"></section><section class="view generic-view" id="view-staff"></section><section class="view generic-view" id="view-roleplay"></section><section class="view generic-view" id="view-logs"></section>
       </div>
     </main>
   </div>
-  <div class="auth-gate" id="authGate">
-    <div class="auth-card">
-      <span class="logo auth-logo"><img src="bound-logo.png" alt="Bound logo"></span>
-      <span class="eyebrow">BOUND CONTROL CENTRE</span>
-      <h2>Manage Bound with Discord</h2>
-      <p>Sign in to see only the servers you are authorised to manage.</p>
-      <button class="primary-action" id="authDiscordBtn">Continue with Discord</button>
-      <a href="index.html">← Back to Bound</a>
-      <small id="authMessage">Discord OAuth uses the <b>identify</b> and <b>guilds</b> scopes.</small>
-    </div>
-  </div>
+  <div class="auth-gate" id="authGate"><div class="auth-card"><span class="logo auth-logo"><img src="bound-logo.png" alt="Bound logo"></span><span class="eyebrow">BOUND CONTROL CENTRE</span><h2>Manage Bound with Discord</h2><p>Sign in to see only the servers you are authorised to manage.</p><button class="primary-action" id="authDiscordBtn">Continue with Discord</button><a href="index.html">← Back to Bound</a><small id="authMessage">Discord OAuth uses the <b>identify</b> and <b>guilds</b> scopes.</small></div></div>
   <div class="toast" id="toast"><span>✓</span><div><b>Saved</b><small>Your changes were saved.</small></div></div>
   <script type="module" src="dashboard.js"></script>
 </body>
