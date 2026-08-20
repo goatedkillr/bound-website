@@ -3,6 +3,15 @@ const navLinks=document.querySelector('.nav-links');
 navToggle?.addEventListener('click',()=>{const open=navLinks.classList.toggle('open');navToggle.setAttribute('aria-expanded',String(open));});
 document.querySelectorAll('.nav-links a').forEach(a=>a.addEventListener('click',()=>navLinks.classList.remove('open')));
 
+// Private/custom server builds now live inside the authenticated dashboard,
+// where they feel like part of the Bound product instead of a detached
+// marketing block on the homepage.
+document.querySelector('.custom-section')?.remove();
+document.querySelectorAll('a[href="#custom"]').forEach(a=>{
+  a.setAttribute('href','dashboard.html#private');
+  if(a.textContent?.trim()==='Custom')a.textContent='Private Builds';
+});
+
 const commandData={
  social:[['/claim user','Send a consent-based ownership request.','GLOBAL'],['/profile','View your Bound profile, owners and subs.','GLOBAL'],['/gag user','Use Bound’s gag interaction with an owned sub.','SOCIAL'],['/hug user','Send a hug with interactive response buttons.','RP'],['/kiss user','Send a kiss and track mutual interaction stats.','RP']],
  safety:[['/safety-flag','Open a safety report for review.','SAFETY'],['/safeword','Trigger the configured safety isolation workflow.','TDS'],['/cage user','Contain a user in a private safety space.','TDS'],['/profile → Data','Request deletion of your stored Bound data.','PRIVACY']],
