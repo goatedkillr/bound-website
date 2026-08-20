@@ -35,7 +35,7 @@ async function authorisedGuild(providerToken,guildId){if(!providerToken)throw ne
 async function rest(base,key,path,{method='GET',body,prefer='return=representation'}={}){if(!key)throw new HttpError(503,'A required dashboard database connection is not configured.');const r=await fetchTimed(`${base}/rest/v1/${path}`,{method,headers:{apikey:key,Authorization:`Bearer ${key}`,'Content-Type':'application/json',Prefer:prefer},body:body?JSON.stringify(body):undefined});const txt=await r.text();let data=null;if(txt){try{data=JSON.parse(txt)}catch{data=txt}}if(!r.ok)throw new HttpError(r.status>=500?502:r.status,'Dashboard database request failed.');return data;}
 const publicRest=(path,opts)=>rest(PUBLIC_SUPABASE_URL,PUBLIC_SERVICE_KEY,path,opts);
 const privateRest=(path,opts)=>rest(PRIVATE_SUPABASE_URL,PRIVATE_SERVICE_KEY,path,opts);
-async function entitlement(userId,guildId){if(!PUBLIC_SERVICE_KEY)throw new HttpError(503,'Premium access validation is not configured.');const rows=await publicRest(`premium_bot_custom_grants?select=id,guild_id&user_id=eq.${userId}`);return(rows||[]).some(g=>g.guild_id===null||String(g.guild_id)===guildId);}
+async function entitlement(guildId){if(!PUBLIC_SERVICE_KEY)throw new HttpError(503,'Premium access validation is not configured.');const rows=await publicRest(`premium_dashboard_guilds?select=guild_id&guild_id=eq.${guildId}&active=eq.true&limit=1`);return Boolean(rows?.length);}
 function text(v,max,fallback=''){const s=String(v??'').trim();if(!s)return fallback;if(s.length>max||/[\u0000-\u001f]/.test(s))throw new HttpError(400,'One of the ticket values is invalid.');return s;}
 function maybeSnowflake(v){const s=String(v??'').trim();if(!s)return '';if(!SNOWFLAKE.test(s))throw new HttpError(400,'Channel, role and category fields must be Discord IDs.');return s;}
 function maybeUrl(v,allowToken=false){const s=String(v??'').trim();if(!s)return '';if(allowToken&&s==='{user_icon}')return s;if(!/^https:\/\//i.test(s))throw new HttpError(400,'Image fields must use HTTPS URLs.');if(s.length>1000)throw new HttpError(400,'Image URL is too long.');return s;}
@@ -47,7 +47,7 @@ export default async function handler(req,res){const requestId=randomUUID();try{
   const guildId=String(req.query.guild_id||'');if(!SNOWFLAKE.test(guildId))throw new HttpError(400,'Invalid Discord server ID.');
   const user=await verifyUser(bearer(req));const uid=discordUserId(user);if(!user||!SNOWFLAKE.test(uid))throw new HttpError(401,'Sign in with Discord first.');
   const guild=await authorisedGuild(String(req.headers['x-discord-provider-token']||''),guildId);
-  if(!(await entitlement(uid,guildId)))return send(res,403,{error:'This server is not covered by your /premium-bot-custom grant.',request_id:requestId},requestId);
+  if(!(await entitlement(guildId)))return send(res,403,{error:'This server does not have an active Private Bound dashboard build.',request_id:requestId},requestId);
 
   if(req.method==='PATCH'){
     const body=req.body||{};const s=body.settings||{};
