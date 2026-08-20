@@ -1,9 +1,3 @@
-const oauthParams=new URLSearchParams(window.location.search);
-const oauthHash=new URLSearchParams(window.location.hash.replace(/^#/,''));
-if(oauthParams.has('code')||oauthParams.has('error')||oauthParams.has('error_description')||oauthHash.has('access_token')||oauthHash.has('refresh_token')){
-  import('./auth-bridge.js').catch(error=>console.error('Bound OAuth bridge failed:',error));
-}
-
 const navToggle=document.querySelector('.nav-toggle');
 const navLinks=document.querySelector('.nav-links');
 navToggle?.addEventListener('click',()=>{const open=navLinks.classList.toggle('open');navToggle.setAttribute('aria-expanded',String(open));});
