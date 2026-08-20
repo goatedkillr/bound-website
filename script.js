@@ -12,6 +12,12 @@ document.querySelectorAll('a[href="#custom"]').forEach(a=>{
   if(a.textContent?.trim()==='Custom')a.textContent='Private Builds';
 });
 
+// Live network reach makes the opening feel established without hardcoding
+// numbers that will immediately become stale.
+if(!document.querySelector('script[src="reach.js"]')){
+  const reach=document.createElement('script');reach.src='reach.js';reach.defer=true;document.body.appendChild(reach);
+}
+
 const commandData={
  social:[['/claim user','Send a consent-based ownership request.','GLOBAL'],['/profile','View your Bound profile, owners and subs.','GLOBAL'],['/gag user','Use Bound’s gag interaction with an owned sub.','SOCIAL'],['/hug user','Send a hug with interactive response buttons.','RP'],['/kiss user','Send a kiss and track mutual interaction stats.','RP']],
  safety:[['/safety-flag','Open a safety report for review.','SAFETY'],['/safeword','Trigger the configured safety isolation workflow.','TDS'],['/cage user','Contain a user in a private safety space.','TDS'],['/profile → Data','Request deletion of your stored Bound data.','PRIVACY']],
