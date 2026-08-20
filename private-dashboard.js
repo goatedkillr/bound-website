@@ -4,6 +4,25 @@
   css.href = 'private-dashboard.css';
   document.head.appendChild(css);
 
+  // The profile/RP showcase files already exist, but were never actually
+  // loaded by dashboard.html. Load them here so the two flagship pages use
+  // their real data-driven designs instead of the generic fallback cards.
+  if (!document.querySelector('link[href="showcase.css"]')) {
+    const showcaseCss = document.createElement('link');
+    showcaseCss.rel = 'stylesheet';
+    showcaseCss.href = 'showcase.css';
+    document.head.appendChild(showcaseCss);
+  }
+  if (!document.querySelector('script[src="showcase.js"]')) {
+    const showcaseScript = document.createElement('script');
+    showcaseScript.type = 'module';
+    showcaseScript.src = 'showcase.js';
+    document.body.appendChild(showcaseScript);
+  }
+
+  const defaultCrumb = document.querySelector('.topbar-left small');
+  if (defaultCrumb && location.hash !== '#private') defaultCrumb.textContent = 'BOUND / CONTROL CENTRE';
+
   const nav = document.querySelector('.side-nav');
   if (nav && !document.querySelector('[data-view="private"]')) {
     const settingsLabel = [...nav.querySelectorAll('.nav-label')].find(x => x.textContent?.trim() === 'SETTINGS');
@@ -87,7 +106,6 @@
   document.querySelector('[data-view="private"]')?.addEventListener('click', e => { e.preventDefault(); openPrivate(); });
   document.getElementById('privateExploreBtn')?.addEventListener('click', () => document.getElementById('privateModules')?.scrollIntoView({ behavior: 'smooth' }));
 
-  // Restore the normal breadcrumb after switching away from Private Bound.
   document.querySelectorAll('.nav-item:not([data-view="private"])').forEach(btn => btn.addEventListener('click', () => {
     const crumb = document.querySelector('.topbar-left small');
     if (crumb) crumb.textContent = 'BOUND / CONTROL CENTRE';
