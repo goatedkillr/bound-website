@@ -7,8 +7,9 @@ function bearer(req){const v=req.headers.authorization||'';return v.startsWith('
 async function verifyUser(token){if(!token)return null;const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:`Bearer ${token}`}});return r.ok?r.json():null;}
 async function discordGuilds(token){if(!token)throw new Error('Discord connection expired. Sign out and reconnect Discord.');const r=await fetch('https://discord.com/api/v10/users/@me/guilds',{headers:{Authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Discord could not return your servers. Reconnect Discord.');return r.json();}
 function canManageGuild(g){if(g.owner)return true;const p=BigInt(g.permissions||'0');return Boolean((p&0x8n)||(p&0x20n));}
-function iconUrl(g){return g.icon?`https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=128`:null;}
+function iconUrl(g){if(!g?.icon)return null;return `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.webp?size=128`}
 function compactNumber(v){const n=Number(v||0);if(n>=1e6)return `${(n/1e6).toFixed(2)}M`;if(n>=1e3)return `${(n/1e3).toFixed(1)}K`;return String(n);}
+function discordUserId(user){return String(user?.user_metadata?.provider_id||user?.user_metadata?.sub||user?.identities?.[0]?.identity_data?.sub||user?.id||'');}
 
 async function rest(path,{method='GET',body,prefer='return=representation'}={}){
   if(!SERVICE_KEY)throw new Error('Vercel is missing SUPABASE_SERVICE_ROLE_KEY.');
@@ -18,6 +19,11 @@ async function rest(path,{method='GET',body,prefer='return=representation'}={}){
 }
 async function safe(query,fallback){try{return await query();}catch(error){console.error('Optional dashboard query failed:',error);return fallback;}}
 async function authorisedGuild(req,guildId){const guilds=await discordGuilds(req.headers['x-discord-provider-token']);const g=guilds.find(x=>x.id===guildId&&canManageGuild(x));if(!g)throw new Error('You do not have Manage Server permission for this Discord server.');return g;}
+async function patchOrInsert(table,guildId,patch,insertBase={}){
+  const current=await rest(`${table}?select=guild_id&guild_id=eq.${guildId}`);
+  if(current?.length){return rest(`${table}?guild_id=eq.${guildId}`,{method:'PATCH',body:{...patch,updated_at:new Date().toISOString()}});}
+  return rest(table,{method:'POST',body:{guild_id:guildId,...insertBase,...patch}});
+}
 
 export default async function handler(req,res){
   try{
@@ -29,7 +35,7 @@ export default async function handler(req,res){
       const guilds=(await discordGuilds(providerToken)).filter(canManageGuild);const ids=guilds.map(g=>g.id);
       let activation=[];if(ids.length)activation=await safe(()=>rest(`bound_guild_activation?select=guild_id,tos_accepted,tos_version&guild_id=in.(${ids.join(',')})`),[]);
       const map=new Map((activation||[]).map(r=>[r.guild_id,r]));
-      return send(res,200,{user:{id:user.user_metadata?.provider_id||user.user_metadata?.sub||user.id,username:user.user_metadata?.user_name||user.user_metadata?.preferred_username||'Discord user',display_name:user.user_metadata?.full_name||user.user_metadata?.name||user.user_metadata?.user_name||'Discord user',avatar_url:user.user_metadata?.avatar_url||user.user_metadata?.picture||null},guilds:guilds.map(g=>({id:g.id,name:g.name,icon_url:iconUrl(g),owner:g.owner,bound_installed:map.has(g.id),tos_accepted:map.get(g.id)?.tos_accepted||false}))});
+      return send(res,200,{user:{id:discordUserId(user),username:user.user_metadata?.user_name||user.user_metadata?.preferred_username||'Discord user',display_name:user.user_metadata?.full_name||user.user_metadata?.name||user.user_metadata?.user_name||'Discord user',avatar_url:user.user_metadata?.avatar_url||user.user_metadata?.picture||null},guilds:guilds.map(g=>({id:g.id,name:g.name,icon_url:iconUrl(g),owner:g.owner,bound_installed:map.has(g.id),tos_accepted:map.get(g.id)?.tos_accepted||false}))});
     }
 
     const guildId=String(req.query.guild_id||'');if(!guildId)return send(res,400,{error:'guild_id is required.'});const guild=await authorisedGuild(req,guildId);
@@ -55,6 +61,25 @@ export default async function handler(req,res){
       const updated=await rest(`guild_settings?guild_id=eq.${guildId}`,{method:'PATCH',body:{prefix,updated_at:new Date().toISOString()}});
       if(updated?.length)return send(res,200,{settings:updated[0]});
       const inserted=await rest('guild_settings',{method:'POST',body:{guild_id:guildId,prefix}});return send(res,200,{settings:inserted?.[0]||{guild_id:guildId,prefix}});
+    }
+
+    if(action==='toggle'&&req.method==='PATCH'){
+      const group=String(req.body?.group||'');const key=String(req.body?.key||'');const value=req.body?.value;
+      if(typeof value!=='boolean')return send(res,400,{error:'Toggle value must be true or false.'});
+      const uid=discordUserId(user);
+      if(group==='verify'){
+        const allowed=new Set(['welcome_enabled','post_verify_enabled','welcome_ping_user','safety_staff_setup_enabled']);
+        if(!allowed.has(key))return send(res,400,{error:'Unsupported verification setting.'});
+        const rows=await patchOrInsert('verify_settings',guildId,{[key]:value},{setup_by:uid});
+        return send(res,200,{group,key,value:Boolean(rows?.[0]?.[key]??value),settings:rows?.[0]||null});
+      }
+      if(group==='safety'){
+        const allowed=new Set(['safety_enabled','auto_ban_minor_safety','auto_ban_harassment_tos','auto_ban_network_ban','auto_unban_on_removal']);
+        if(!allowed.has(key))return send(res,400,{error:'Unsupported safety setting.'});
+        const rows=await patchOrInsert('safety_guilds',guildId,{[key]:value},{configured_by:uid});
+        return send(res,200,{group,key,value:Boolean(rows?.[0]?.[key]??value),settings:rows?.[0]||null});
+      }
+      return send(res,400,{error:'Unsupported setting group.'});
     }
 
     return send(res,404,{error:'Unknown dashboard action.'});
