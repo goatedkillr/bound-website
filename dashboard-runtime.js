@@ -1,4 +1,12 @@
 (() => {
+  // Supabase already persists and refreshes the Bound auth session. Keep the
+  // Discord provider token available across normal browser restarts too so a
+  // returning user is not forced through OAuth every time they reopen Bound.
+  const providerBackup = localStorage.getItem('bound_discord_provider_token_backup');
+  if (!sessionStorage.getItem('bound_discord_provider_token') && providerBackup) {
+    sessionStorage.setItem('bound_discord_provider_token', providerBackup);
+  }
+
   const originalFetch = window.fetch.bind(window);
   const API_RETRY_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
   let inFlight = 0;
@@ -105,6 +113,15 @@
     const message = String(event.reason?.message || event.reason || '');
     if (/network|fetch|offline|timeout|abort/i.test(message)) { lastFailure = Date.now(); updateNetwork(); }
   });
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { ensureStatus(); updateNetwork(); });
-  else { ensureStatus(); updateNetwork(); }
+
+  const arm = () => {
+    ensureStatus();
+    updateNetwork();
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
+      localStorage.removeItem('bound_discord_provider_token_backup');
+      localStorage.removeItem('bound_discord_provider_refresh_token');
+      sessionStorage.removeItem('bound_discord_provider_token');
+    }, { capture: true });
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', arm); else arm();
 })();
