@@ -15,6 +15,21 @@ try {
   // fall back to the normal Supabase session flow in that case.
 }
 
+// Load the premium Bound Profile + Social/RP showcase layer independently of
+// the core dashboard. If this layer fails, the rest of the dashboard still works.
+try {
+  if (!document.querySelector('link[data-bound-showcase]')) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = './showcase.css';
+    link.dataset.boundShowcase = '1';
+    document.head.appendChild(link);
+  }
+  import('./showcase.js').catch(error => console.error('Bound showcase failed:', error));
+} catch (error) {
+  console.error('Bound showcase loader failed:', error);
+}
+
 // Dashboard is auth-first on every device. If a user opens dashboard.html with
 // no Supabase session, send them straight to Discord instead of leaving them on
 // a "not signed in" screen. A short-lived guard prevents redirect loops when a
