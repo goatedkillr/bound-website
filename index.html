@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Bound — a feature-rich Discord bot for community, safety, roleplay, economy, and support." />
+  <title>Bound — Discord, but closer.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header class="nav-wrap">
+    <nav class="nav container" aria-label="Primary navigation">
+      <a class="brand" href="#top" aria-label="Bound home">
+        <span class="brand-mark">B</span>
+        <span class="brand-copy"><strong>Bound</strong><small>by Bound Society</small></span>
+      </a>
+      <button class="nav-toggle" aria-label="Open menu" aria-expanded="false">☰</button>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#safety">Safety</a>
+        <a href="#commands">Commands</a>
+        <a href="#support">Support</a>
+        <a class="btn btn-small btn-ghost" href="dashboard.html">Dashboard</a>
+        <a class="btn btn-small" href="#invite">Add Bound</a>
+      </div>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero container">
+      <div class="hero-copy reveal">
+        <div class="eyebrow"><span class="dot"></span> Built for communities that want more</div>
+        <h1>Discord,<br><span>but closer.</span></h1>
+        <p class="lead">Bound brings ownership, roleplay, moderation, safety tools, social features, economy systems and community utilities into one unmistakably Bound experience.</p>
+        <div class="hero-actions" id="invite">
+          <a class="btn btn-primary" href="#">Add Bound to Discord <span>↗</span></a>
+          <a class="btn btn-secondary" href="#support">Join Bound Society</a>
+        </div>
+        <div class="trust-row">
+          <span><b>24/7</b> availability</span>
+          <span><b>Global</b> commands</span>
+          <span><b>Safety</b> first</span>
+        </div>
+      </div>
+
+      <div class="hero-visual reveal delay-1" aria-label="Bound profile preview">
+        <div class="orb orb-one"></div><div class="orb orb-two"></div>
+        <div class="discord-card glass tilt-card">
+          <div class="profile-head">
+            <div class="avatar-ring"><div class="avatar">B</div><i></i></div>
+            <div><span class="muted">BOUND PROFILE</span><h3>Bound Society</h3><p>@bound • online</p></div>
+          </div>
+          <div class="status-card">
+            <span>STATUS</span><strong>Connected & protected</strong>
+            <div class="pulse-line"><i></i></div>
+          </div>
+          <div class="stat-grid">
+            <div><span>Balance</span><b>12,840</b><small>Nugs</small></div>
+            <div><span>Level</span><b>42</b><small>active</small></div>
+            <div><span>Claims</span><b>7</b><small>connections</small></div>
+          </div>
+          <div class="mini-row">
+            <div class="mini-icon heart">♥</div><div><b>Bound together</b><small>Ownership, consent & social systems</small></div><span class="pill">LIVE</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="marquee" aria-hidden="true">
+      <div class="marquee-track">
+        <span>OWNERSHIP</span><b>✦</b><span>ROLEPLAY</span><b>✦</b><span>SAFETY</span><b>✦</b><span>ECONOMY</span><b>✦</b><span>COMMUNITY</span><b>✦</b>
+        <span>OWNERSHIP</span><b>✦</b><span>ROLEPLAY</span><b>✦</b><span>SAFETY</span><b>✦</b><span>ECONOMY</span><b>✦</b><span>COMMUNITY</span><b>✦</b>
+      </div>
+    </section>
+
+    <section class="section container" id="features">
+      <div class="section-heading reveal"><div class="eyebrow">ONE BOT. YOUR WHOLE COMMUNITY.</div><h2>Everything feels <span>connected.</span></h2><p>Bound is built as a complete social layer for Discord instead of a pile of unrelated commands.</p></div>
+      <div class="feature-grid">
+        <article class="feature-card feature-large reveal">
+          <div class="feature-icon">♡</div><span class="kicker">RELATIONSHIPS</span><h3>Ownership that actually feels alive.</h3><p>Claims, profiles, owner/sub views, gag interactions, relationship states, and controls designed around clear consent.</p>
+          <div class="relationship-ui">
+            <div class="person"><span class="avatar mini">M</span><div><b>ManlikeM</b><small>Owner</small></div></div>
+            <div class="bond"><i></i><em>BOUND</em><i></i></div>
+            <div class="person"><span class="avatar mini alt">S</span><div><b>Sub</b><small>Protected</small></div></div>
+          </div>
+        </article>
+        <article class="feature-card reveal delay-1"><div class="feature-icon shield">◆</div><span class="kicker">SAFETY</span><h3>Safety that isn’t an afterthought.</h3><p>Consent controls, reporting, data deletion review, moderation support and auditable staff actions.</p><a href="#safety" class="text-link">Explore safety →</a></article>
+        <article class="feature-card reveal delay-2"><div class="feature-icon">◎</div><span class="kicker">ROLEPLAY</span><h3>Social interactions with personality.</h3><p>Hugs, kisses, bites, cuddles, headpats and more — with stats, responses and curated media.</p><div class="chips"><span>/hug</span><span>/kiss</span><span>/bite</span><span>/cuddle</span></div></article>
+        <article class="feature-card reveal"><div class="feature-icon">₦</div><span class="kicker">ECONOMY</span><h3>Play, earn, risk.</h3><p>Work, hunt, fish, rob, heist, shops and balances with a system made for your server’s vibe.</p><div class="cash-line"><b>+ 2,450 Nugs</b><span>today</span></div></article>
+        <article class="feature-card reveal delay-1"><div class="feature-icon">↗</div><span class="kicker">GLOBAL</span><h3>More than one server.</h3><p>Global interactions and connected social features help Bound feel consistent wherever your community goes.</p><div class="server-dots"><i></i><i></i><i></i><i></i><span>+12</span></div></article>
+      </div>
+    </section>
+
+    <section class="safety-section" id="safety">
+      <div class="container safety-grid">
+        <div class="reveal"><div class="eyebrow">BOUND SAFETY</div><h2>Powerful tools.<br><span>Clear boundaries.</span></h2><p class="lead small">When a bot manages social and roleplay systems, safety has to be part of the foundation. Bound gives users and staff clear controls for consent, isolation, review and accountability.</p><div class="safety-points"><div><b>01</b><span><strong>Consent controls</strong><small>Block, revoke, restrict and review interaction permissions.</small></span></div><div><b>02</b><span><strong>Safety workflows</strong><small>Reports, review queues and action logs for staff.</small></span></div><div><b>03</b><span><strong>Data control</strong><small>User-facing deletion requests routed through a safety review process.</small></span></div></div></div>
+        <div class="safety-console reveal delay-1">
+          <div class="console-top"><span><i></i> Bound Safety</span><small>protected</small></div>
+          <div class="console-body">
+            <div class="shield-art"><div class="shield-inner">B</div><span class="ring r1"></span><span class="ring r2"></span></div>
+            <h3>Your boundaries stay yours.</h3><p>Safety controls remain visible, deliberate and reversible.</p>
+            <div class="permission"><span>Interaction consent</span><b class="toggle on"><i></i></b></div>
+            <div class="permission"><span>DM notifications</span><b class="toggle on"><i></i></b></div>
+            <div class="permission"><span>Profile visibility</span><b class="toggle"><i></i></b></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section container" id="commands">
+      <div class="section-heading left reveal"><div class="eyebrow">COMMANDS</div><h2>Easy to use.<br><span>Hard to outgrow.</span></h2></div>
+      <div class="command-shell reveal delay-1">
+        <div class="command-tabs"><button class="active" data-tab="social">Social</button><button data-tab="safety">Safety</button><button data-tab="economy">Economy</button><button data-tab="community">Community</button></div>
+        <div id="command-list" class="command-list"></div>
+      </div>
+    </section>
+
+    <section class="section container support" id="support">
+      <div class="cta-card reveal">
+        <div class="cta-glow"></div>
+        <div><div class="eyebrow">BOUND SOCIETY</div><h2>Need help?<br><span>You’re already among friends.</span></h2><p>Join the support server for setup help, updates, suggestions, bug reports and the community behind Bound.</p><div class="hero-actions"><a class="btn btn-primary" href="#">Join Bound Society <span>↗</span></a><a class="btn btn-secondary" href="#">Read the docs</a></div></div>
+        <div class="society-mark"><div class="big-b">B</div><span>BOUND<br>SOCIETY</span></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container footer-grid"><div class="brand"><span class="brand-mark">B</span><span class="brand-copy"><strong>Bound</strong><small>Made for Discord communities.</small></span></div><div class="footer-links"><a href="#features">Features</a><a href="#safety">Safety</a><a href="#commands">Commands</a><a href="#support">Support</a><a href="#">Privacy</a><a href="#">Terms</a></div><small class="copyright">© 2026 Bound. All rights reserved.</small></div>
+  </footer>
+<script src="script.js"></script>
+</body>
+</html>
