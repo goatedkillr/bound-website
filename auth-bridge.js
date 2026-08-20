@@ -5,95 +5,88 @@ const params = new URLSearchParams(window.location.search);
 const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
 const code = params.get('code');
 const oauthError = params.get('error_description') || params.get('error');
-const isOAuthReturn = Boolean(
-  code || oauthError || hash.get('access_token') || hash.get('refresh_token')
-);
+const hashAccessToken = hash.get('access_token');
+const hashRefreshToken = hash.get('refresh_token');
+const hashProviderToken = hash.get('provider_token');
+const hashProviderRefreshToken = hash.get('provider_refresh_token');
+const isOAuthReturn = Boolean(code || oauthError || hashAccessToken || hashRefreshToken);
 
 if (isOAuthReturn) {
-  const supabase = createClient(
-    SUPABASE_URL,
-    SUPABASE_PUBLISHABLE_KEY,
-    {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
+  const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
     },
-  );
-
-  const goDashboard = () => {
-    const target = `${window.location.origin}/dashboard.html`;
-    if (window.location.href !== target) window.location.replace(target);
-  };
-
-  const storeSession = (session) => {
-    if (!session) return false;
-    if (session.provider_token) {
-      sessionStorage.setItem('bound_discord_provider_token', session.provider_token);
-      localStorage.setItem('bound_discord_provider_token_backup', session.provider_token);
-    }
-    if (session.provider_refresh_token) {
-      localStorage.setItem('bound_discord_provider_refresh_token', session.provider_refresh_token);
-    }
-    return Boolean(session.access_token);
-  };
-
-  supabase.auth.onAuthStateChange((_event, session) => {
-    if (storeSession(session)) goDashboard();
   });
+
+  const dashboardUrl = `${window.location.origin}/dashboard.html`;
+  const goDashboard = () => window.location.replace(dashboardUrl);
+
+  const clearSensitiveUrl = () => {
+    try {
+      window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search && !code ? window.location.search : ''}`);
+    } catch {}
+  };
+
+  const storeProviderTokens = (session) => {
+    const providerToken = session?.provider_token || hashProviderToken;
+    const providerRefreshToken = session?.provider_refresh_token || hashProviderRefreshToken;
+
+    if (providerToken) {
+      sessionStorage.setItem('bound_discord_provider_token', providerToken);
+      localStorage.setItem('bound_discord_provider_token_backup', providerToken);
+    }
+
+    if (providerRefreshToken) {
+      localStorage.setItem('bound_discord_provider_refresh_token', providerRefreshToken);
+    }
+  };
+
+  const fail = (message) => {
+    sessionStorage.setItem('bound_auth_error', message || 'Discord sign-in failed.');
+    clearSensitiveUrl();
+    goDashboard();
+  };
 
   const finish = async () => {
     try {
       if (oauthError) {
-        sessionStorage.setItem('bound_auth_error', oauthError);
+        fail(oauthError);
+        return;
+      }
+
+      // Current production callback is the implicit flow: Supabase returns
+      // access/refresh/provider tokens in the URL hash. Consume them directly.
+      if (hashAccessToken && hashRefreshToken) {
+        storeProviderTokens(null);
+        clearSensitiveUrl();
+        const { data, error } = await supabase.auth.setSession({
+          access_token: hashAccessToken,
+          refresh_token: hashRefreshToken,
+        });
+        if (error) throw error;
+        storeProviderTokens(data?.session);
+        if (!data?.session?.access_token) throw new Error('Supabase did not persist the returned Discord session.');
         goDashboard();
         return;
       }
 
-      // PKCE callbacks return ?code=. Explicitly exchange it instead of
-      // assuming getSession() will do the exchange for us.
+      // Support PKCE too if the project is switched to code flow later.
       if (code) {
         const { data, error } = await supabase.auth.exchangeCodeForSession(code);
         if (error) throw error;
-        if (storeSession(data?.session)) {
-          goDashboard();
-          return;
-        }
-      }
-
-      // Implicit OAuth callbacks return tokens in the URL hash. The browser
-      // client processes those automatically, then getSession() exposes them.
-      const { data, error } = await supabase.auth.getSession();
-      if (error) throw error;
-      if (storeSession(data?.session)) {
+        storeProviderTokens(data?.session);
+        clearSensitiveUrl();
+        if (!data?.session?.access_token) throw new Error('Supabase did not create a session from the OAuth code.');
         goDashboard();
         return;
       }
 
-      // Allow a short window for Supabase's URL parser/auth event to finish.
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        const { data: retry, error: retryError } = await supabase.auth.getSession();
-        if (retryError) throw retryError;
-        if (storeSession(retry?.session)) {
-          goDashboard();
-          return;
-        }
-      }
-
-      sessionStorage.setItem(
-        'bound_auth_error',
-        'Discord approved the login, but no Supabase session was created. Check the Supabase Site URL and Redirect URLs for this exact website domain.'
-      );
-      goDashboard();
+      fail('Discord returned successfully, but Bound could not find the session tokens.');
     } catch (error) {
       console.error('Bound OAuth callback failed:', error);
-      sessionStorage.setItem(
-        'bound_auth_error',
-        error?.message || 'Discord sign-in failed while creating the Supabase session.'
-      );
-      goDashboard();
+      fail(error?.message || 'Discord sign-in failed while creating the Supabase session.');
     }
   };
 
