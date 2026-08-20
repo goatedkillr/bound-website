@@ -26,6 +26,25 @@ let overview = null;
 function escapeHtml(value=''){return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function avatarFallback(name='B'){return String(name).trim().charAt(0).toUpperCase() || 'B';}
 function applyAvatar(el,url,name){if(!el)return;if(url){el.textContent='';el.style.backgroundImage=`url("${url}")`;el.style.backgroundSize='cover';el.style.backgroundPosition='center';}else{el.style.backgroundImage='';el.textContent=avatarFallback(name);}}
+function applyServerIcon(el,url,name){
+  if(!el)return;
+  el.style.backgroundImage='';
+  el.innerHTML='';
+  if(url){
+    const img=document.createElement('img');
+    img.src=url;
+    img.alt=`${name||'Server'} icon`;
+    img.style.width='100%';
+    img.style.height='100%';
+    img.style.objectFit='cover';
+    img.style.display='block';
+    img.style.borderRadius='inherit';
+    img.addEventListener('error',()=>{el.innerHTML='';el.textContent=avatarFallback(name);},{once:true});
+    el.appendChild(img);
+  }else{
+    el.textContent=avatarFallback(name);
+  }
+}
 function formatNugs(value){return new Intl.NumberFormat('en-GB').format(Number(value||0));}
 function relativeTime(value){if(!value)return '—';const ms=Date.now()-new Date(value).getTime();const mins=Math.max(1,Math.round(ms/60000));if(mins<60)return `${mins}m`;const hrs=Math.round(mins/60);if(hrs<24)return `${hrs}h`;return `${Math.round(hrs/24)}d`;}
 
@@ -67,7 +86,7 @@ function renderSignedOut(){
   $('authGate')?.classList.remove('hidden');
   if($('loginBtn')){$('loginBtn').textContent='Discord Login';$('loginBtn').classList.remove('signed-in');$('loginBtn').disabled=false;}
   if($('userName'))$('userName').textContent='Not signed in'; if($('userRole'))$('userRole').textContent='Discord account'; applyAvatar($('userAvatar'),null,'?');
-  if($('serverName'))$('serverName').textContent='Choose a server'; if($('serverPicker'))$('serverPicker').innerHTML='';
+  if($('serverName'))$('serverName').textContent='Choose a server'; applyServerIcon($('serverIcon'),null,'B'); if($('serverPicker'))$('serverPicker').innerHTML='';
   setAuthMessage('Sign in with Discord to load servers you can manage.');
 }
 
@@ -97,7 +116,6 @@ async function bootstrap(){
   }catch(error){
     console.error(error);
     setAuthMessage(error?.message||'Could not load dashboard.',true);
-    // Keep the login gate visible only when authentication itself needs action.
     $('authGate')?.classList.remove('hidden');
   }
 }
@@ -105,7 +123,7 @@ async function bootstrap(){
 function renderGuildPicker(){
   const picker=$('serverPicker');if(!picker)return;
   if(!managedGuilds.length){picker.innerHTML='<div class="picker-empty">No manageable servers found.</div>';return;}
-  picker.innerHTML=managedGuilds.map(g=>`<button class="server-option ${g.id===selectedGuildId?'active':''}" data-guild-id="${g.id}">${g.icon_url?`<img src="${g.icon_url}" alt="">`:`<span>${avatarFallback(g.name)}</span>`}<div><b>${escapeHtml(g.name)}</b><small>${g.bound_installed?'Bound detected':'Bound data not detected'}</small></div>${g.bound_installed?'<em>BOUND</em>':''}</button>`).join('');
+  picker.innerHTML=managedGuilds.map(g=>`<button class="server-option ${g.id===selectedGuildId?'active':''}" data-guild-id="${g.id}">${g.icon_url?`<img src="${g.icon_url}" alt="${escapeHtml(g.name)} icon" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span style="display:none">${avatarFallback(g.name)}</span>`:`<span>${avatarFallback(g.name)}</span>`}<div><b>${escapeHtml(g.name)}</b><small>${g.bound_installed?'Bound detected':'Bound data not detected'}</small></div>${g.bound_installed?'<em>BOUND</em>':''}</button>`).join('');
   picker.querySelectorAll('[data-guild-id]').forEach(b=>b.addEventListener('click',()=>chooseGuild(b.dataset.guildId,true)));
 }
 function toggleServerPicker(){const p=$('serverPicker');if(!p)return;p.hidden=!p.hidden;}
@@ -114,24 +132,61 @@ document.addEventListener('click',(e)=>{const p=$('serverPicker');if(!p||p.hidde
 
 async function chooseGuild(guildId,close=true){
   selectedGuildId=guildId;localStorage.setItem('bound_dashboard_guild',guildId);if(close&&$('serverPicker'))$('serverPicker').hidden=true;renderGuildPicker();
-  const g=managedGuilds.find(x=>x.id===guildId);if(g){if($('serverName'))$('serverName').textContent=g.name;applyAvatar($('serverIcon'),g.icon_url,g.name);}
+  const g=managedGuilds.find(x=>x.id===guildId);if(g){if($('serverName'))$('serverName').textContent=g.name;applyServerIcon($('serverIcon'),g.icon_url,g.name);}
   await loadOverview();
 }
+
+function prepareLiveSwitches(){
+  const labels=[...document.querySelectorAll('#view-settings .settings-list label')];
+  const configs=[
+    {label:labels[0],group:'safety',key:'safety_enabled',title:'Safety system',desc:'Enable or disable Bound safety enforcement for this server.'},
+    {label:labels[2],group:'verify',key:'welcome_enabled',title:'Welcome messages',desc:'Send the configured welcome message after verification.'},
+    {label:labels[3],group:'verify',key:'post_verify_enabled',title:'Post-verify messages',desc:'Send the configured follow-up message after verification.'},
+  ];
+  for(const cfg of configs){
+    const button=cfg.label?.querySelector('.switch');if(!button)continue;
+    cfg.label.querySelector('b').textContent=cfg.title;cfg.label.querySelector('small').textContent=cfg.desc;
+    button.disabled=false;button.dataset.group=cfg.group;button.dataset.key=cfg.key;button.setAttribute('aria-pressed','false');
+    button.addEventListener('click',()=>toggleLiveSetting(button));
+  }
+  const economySwitch=document.querySelector('#view-economy .switch');
+  if(economySwitch){const label=economySwitch.closest('label');label?.querySelector('small') && (label.querySelector('small').textContent='Coming next — this still needs a bot-side economy enable setting.');}
+}
+function setSwitchState(button,state){if(!button)return;button.classList.toggle('on',Boolean(state));button.setAttribute('aria-pressed',String(Boolean(state)));}
+function findSwitch(group,key){return document.querySelector(`.switch[data-group="${group}"][data-key="${key}"]`);}
+async function toggleLiveSetting(button){
+  if(!selectedGuildId){toast('Choose a server','Select a server first.');return;}
+  if(button.dataset.saving==='1')return;
+  const oldState=button.classList.contains('on');const next=!oldState;
+  setSwitchState(button,next);button.dataset.saving='1';button.disabled=true;
+  try{
+    const data=await api('toggle',{guildId:selectedGuildId,method:'PATCH',body:{group:button.dataset.group,key:button.dataset.key,value:next}});
+    setSwitchState(button,data.value);
+    toast('Setting updated',`${button.closest('label')?.querySelector('b')?.textContent||'Setting'} is now ${data.value?'enabled':'disabled'}.`);
+    await loadOverview();
+  }catch(error){
+    setSwitchState(button,oldState);toast('Could not update setting',error?.message||'The change was rejected.');
+  }finally{button.dataset.saving='0';button.disabled=false;}
+}
+prepareLiveSwitches();
 
 async function loadOverview(){
   if(!selectedGuildId)return;
   try{
     if($('metricGuildStatus'))$('metricGuildStatus').textContent='…';
     overview=await api('overview',{guildId:selectedGuildId}); const d=overview;
-    if($('serverName'))$('serverName').textContent=d.guild?.name||'Server';applyAvatar($('serverIcon'),d.guild?.icon_url,d.guild?.name);
+    if($('serverName'))$('serverName').textContent=d.guild?.name||'Server';applyServerIcon($('serverIcon'),d.guild?.icon_url,d.guild?.name);
     if($('metricGuildStatus'))$('metricGuildStatus').textContent=d.activation?.tos_accepted?'Activated':'Setup';
     if($('metricTos'))$('metricTos').textContent=d.activation?.tos_accepted?'Terms accepted':'Terms pending';
     if($('metricVerified'))$('metricVerified').textContent=d.verification?'Yes':'No';
     if($('metricSafety'))$('metricSafety').textContent=String(d.safety?.pending??0);
     if($('metricNugs'))$('metricNugs').textContent=d.economy?.total_nugs_display||'0'; if($('metricEconomyUsers'))$('metricEconomyUsers').textContent=String(d.economy?.users??0);
-    if($('safetyOpen'))$('safetyOpen').textContent=String(d.safety?.pending??0); if($('safetyCages'))$('safetyCages').textContent=String(d.safety?.cages?.length??0); if($('safetyGags'))$('safetyGags').textContent=String(d.safety?.active_gags?.length??0); if($('safetyNetwork'))$('safetyNetwork').textContent=d.safety?.config?.safety_enabled?'Enabled':'Not set';
+    if($('safetyOpen'))$('safetyOpen').textContent=String(d.safety?.pending??0); if($('safetyCages'))$('safetyCages').textContent=String(d.safety?.cages?.length??0); if($('safetyGags'))$('safetyGags').textContent=String(d.safety?.active_gags?.length??0); if($('safetyNetwork'))$('safetyNetwork').textContent=d.safety?.config?.safety_enabled?'Enabled':'Disabled';
     if($('economyCirculation'))$('economyCirculation').textContent=formatNugs(d.economy?.total_nugs); if($('economyUsers'))$('economyUsers').textContent=String(d.economy?.users??0); if($('economySync'))$('economySync').textContent='Live';
     if($('prefixInput'))$('prefixInput').value=d.settings?.prefix||'£'; if($('saveState'))$('saveState').textContent='No unsaved changes';
+    setSwitchState(findSwitch('safety','safety_enabled'),Boolean(d.safety?.config?.safety_enabled));
+    setSwitchState(findSwitch('verify','welcome_enabled'),Boolean(d.verification?.welcome_enabled));
+    setSwitchState(findSwitch('verify','post_verify_enabled'),Boolean(d.verification?.post_verify_enabled));
     renderSafetyRows(d.safety?.cases||[]); renderActivity(d.activity||[]);
   }catch(error){console.error(error);toast('Live data unavailable',error?.message||'Could not load this server.');if($('metricGuildStatus'))$('metricGuildStatus').textContent='Error';}
 }
@@ -147,9 +202,6 @@ $('saveSettings')?.addEventListener('click',async()=>{
   catch(error){toast('Could not save',error?.message||'Server rejected this change.');}
   finally{setLoading(btn,false);}
 });
-
-// Disabled placeholder controls remain inert by design; never toggle them visually.
-document.querySelectorAll('.switch:not(:disabled)').forEach(s=>s.addEventListener('click',()=>s.classList.toggle('on')));
 
 supabase.auth.onAuthStateChange((event,newSession)=>{
   session=newSession;
