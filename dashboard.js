@@ -21,7 +21,7 @@ const authMessage = $('authMessage');
 const serverPicker = $('serverPicker');
 const serverPickerBtn = $('serverPickerBtn');
 let session = null;
-let providerToken = localStorage.getItem('bound_discord_provider_token') || null;
+let providerToken = null;
 let managedGuilds = [];
 let selectedGuildId = localStorage.getItem('bound_dashboard_guild') || null;
 let overview = null;
@@ -68,8 +68,6 @@ logoutBtn?.addEventListener('click',async()=>{
   await supabase.auth.signOut();
   session=null;providerToken=null;managedGuilds=[];selectedGuildId=null;
   localStorage.removeItem('bound_dashboard_guild');
-  localStorage.removeItem('bound_discord_provider_token');
-  localStorage.removeItem('bound_discord_provider_refresh_token');
   renderSignedOut();
 });
 
@@ -83,27 +81,6 @@ document.addEventListener('click',(event)=>{
   if(!serverPicker || serverPicker.hidden)return;
   if(!serverPicker.contains(event.target) && event.target!==serverPickerBtn)serverPicker.hidden=true;
 });
-
-function rememberProviderTokens(currentSession){
-  if(currentSession?.provider_token){
-    providerToken=currentSession.provider_token;
-    localStorage.setItem('bound_discord_provider_token',currentSession.provider_token);
-  }
-  if(currentSession?.provider_refresh_token){
-    localStorage.setItem('bound_discord_provider_refresh_token',currentSession.provider_refresh_token);
-  }
-}
-
-function renderSignedInIdentity(currentSession){
-  const meta=currentSession?.user?.user_metadata||{};
-  const name=meta.full_name||meta.name||meta.user_name||meta.preferred_username||'Discord user';
-  const avatar=meta.avatar_url||meta.picture||null;
-  authGate?.classList.add('hidden');
-  if(loginBtn){loginBtn.textContent=name;loginBtn.classList.add('signed-in');loginBtn.disabled=false;}
-  if($('userName'))$('userName').textContent=name;
-  if($('userRole'))$('userRole').textContent=providerToken?'Discord connected':'Reconnect Discord to load servers';
-  applyAvatar($('userAvatar'),avatar,name);
-}
 
 function renderSignedOut(){
   authGate?.classList.remove('hidden');
@@ -142,13 +119,6 @@ async function api(action,{guildId,method='GET',body}={}){
 
 async function bootstrap(){
   try{
-    renderSignedInIdentity(session);
-    if(!providerToken){
-      authGate?.classList.remove('hidden');
-      setAuthMessage('Your Supabase session is signed in, but Discord needs to be reconnected once so Bound can read your manageable servers.',true);
-      if(authDiscordBtn)authDiscordBtn.textContent='Reconnect Discord';
-      return;
-    }
     const data=await api('bootstrap');
     managedGuilds=data.guilds||[];
     authGate?.classList.add('hidden');
@@ -261,15 +231,8 @@ $('saveSettings')?.addEventListener('click',async()=>{
 
 supabase.auth.onAuthStateChange((event,newSession)=>{
   session=newSession;
-  rememberProviderTokens(newSession);
-  if(event==='SIGNED_OUT'||!newSession){
-    providerToken=null;
-    localStorage.removeItem('bound_discord_provider_token');
-    localStorage.removeItem('bound_discord_provider_refresh_token');
-    renderSignedOut();
-    return;
-  }
-  renderSignedInIdentity(newSession);
+  providerToken=newSession?.provider_token||providerToken;
+  if(event==='SIGNED_OUT'||!newSession){renderSignedOut();return;}
   if(event==='SIGNED_IN'||event==='INITIAL_SESSION'||event==='TOKEN_REFRESHED')bootstrap();
 });
 
@@ -277,9 +240,6 @@ supabase.auth.onAuthStateChange((event,newSession)=>{
   const {data:{session:initialSession},error}=await supabase.auth.getSession();
   if(error){console.error(error);setAuthMessage(error.message,true);renderSignedOut();return;}
   session=initialSession;
-  rememberProviderTokens(initialSession);
-  if(initialSession){
-    renderSignedInIdentity(initialSession);
-    await bootstrap();
-  }else renderSignedOut();
+  providerToken=initialSession?.provider_token||null;
+  if(initialSession) await bootstrap(); else renderSignedOut();
 })();
