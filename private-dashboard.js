@@ -20,8 +20,10 @@
     document.body.appendChild(showcaseScript);
   }
 
+  const wantsPrivate = location.hash === '#private' || sessionStorage.getItem('bound_open_private') === '1';
+  if (location.hash === '#private') sessionStorage.setItem('bound_open_private', '1');
   const defaultCrumb = document.querySelector('.topbar-left small');
-  if (defaultCrumb && location.hash !== '#private') defaultCrumb.textContent = 'BOUND / CONTROL CENTRE';
+  if (defaultCrumb && !wantsPrivate) defaultCrumb.textContent = 'BOUND / CONTROL CENTRE';
 
   const nav = document.querySelector('.side-nav');
   if (nav && !document.querySelector('[data-view="private"]')) {
@@ -99,18 +101,24 @@
     const crumb = document.querySelector('.topbar-left small');
     if (crumb) crumb.textContent = 'BOUND / PRIVATE BUILDS';
     document.getElementById('sidebar')?.classList.remove('open');
+    sessionStorage.setItem('bound_open_private', '1');
     history.replaceState(null, '', '#private');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  document.querySelector('[data-view="private"]')?.addEventListener('click', e => { e.preventDefault(); openPrivate(); });
+  document.querySelector('[data-view="private"]')?.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    openPrivate();
+  });
   document.getElementById('privateExploreBtn')?.addEventListener('click', () => document.getElementById('privateModules')?.scrollIntoView({ behavior: 'smooth' }));
 
   document.querySelectorAll('.nav-item:not([data-view="private"])').forEach(btn => btn.addEventListener('click', () => {
     const crumb = document.querySelector('.topbar-left small');
     if (crumb) crumb.textContent = 'BOUND / CONTROL CENTRE';
+    sessionStorage.removeItem('bound_open_private');
     if (location.hash === '#private') history.replaceState(null, '', location.pathname);
   }));
 
-  if (location.hash === '#private') setTimeout(openPrivate, 0);
+  if (wantsPrivate) setTimeout(openPrivate, 0);
 })();
