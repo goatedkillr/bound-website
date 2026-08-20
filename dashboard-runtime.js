@@ -4,6 +4,22 @@
   let inFlight = 0;
   let lastFailure = 0;
 
+  const style = document.createElement('style');
+  style.textContent = `
+    .connection-pill{transition:.2s ease;min-width:86px;justify-content:center;gap:7px;cursor:default}
+    .connection-pill i{width:6px;height:6px;border-radius:50%;background:#66d59a;box-shadow:0 0 12px rgba(102,213,154,.8)}
+    .connection-pill[data-state="syncing"]{color:#d7b3ff;border-color:rgba(197,168,255,.18);background:rgba(197,168,255,.07)}
+    .connection-pill[data-state="syncing"] i{background:#c5a8ff;box-shadow:0 0 12px rgba(197,168,255,.8);animation:boundPulse 1s ease-in-out infinite}
+    .connection-pill[data-state="recovering"]{color:#f0c58e;border-color:rgba(240,182,109,.18);background:rgba(240,182,109,.07)}
+    .connection-pill[data-state="recovering"] i{background:#f0b66d;box-shadow:0 0 12px rgba(240,182,109,.75)}
+    .connection-pill[data-state="offline"]{color:#f49aaa;border-color:rgba(241,113,131,.2);background:rgba(241,113,131,.08)}
+    .connection-pill[data-state="offline"] i{background:#f17183;box-shadow:0 0 12px rgba(241,113,131,.75)}
+    @keyframes boundPulse{50%{opacity:.35;transform:scale(.72)}}
+    @media(max-width:720px){.connection-pill{min-width:34px;width:34px;padding:0}.connection-pill span{display:none}}
+    @media(prefers-reduced-motion:reduce){.connection-pill,.connection-pill i{animation:none!important;transition:none!important}}
+  `;
+  document.head.appendChild(style);
+
   function ensureStatus() {
     if (document.getElementById('connectionStatus')) return;
     const host = document.querySelector('.topbar-actions');
@@ -22,6 +38,7 @@
     const pill = document.getElementById('connectionStatus');
     if (!pill) return;
     pill.dataset.state = state;
+    pill.title = `Dashboard: ${text}`;
     const label = pill.querySelector('span');
     if (label) label.textContent = text;
   }
@@ -61,6 +78,7 @@
         const response = await originalFetch(input, { ...init, signal: controller.signal });
         if (response.ok || !retryable || !API_RETRY_STATUS.has(response.status) || attempt === attempts - 1) {
           if (!response.ok) lastFailure = Date.now();
+          else if (attempt > 0) lastFailure = 0;
           return response;
         }
         lastFailure = Date.now();
