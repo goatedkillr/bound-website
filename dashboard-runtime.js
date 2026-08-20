@@ -65,6 +65,7 @@
     if(!document.querySelector('link[href="private-controls.css"]')){const l=document.createElement('link');l.rel='stylesheet';l.href='private-controls.css';document.head.appendChild(l)}
     if(!document.querySelector('script[src="private-controls.js"]')){const s=document.createElement('script');s.src='private-controls.js';s.defer=true;document.body.appendChild(s)}
     if(!document.querySelector('script[src="dashboard-access.js"]')){const s=document.createElement('script');s.src='dashboard-access.js';s.defer=true;document.body.appendChild(s)}
+    if(!document.querySelector('script[src="dashboard-polish.js"]')){const s=document.createElement('script');s.src='dashboard-polish.js';s.defer=true;document.body.appendChild(s)}
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',arm);else arm();
 })();
