@@ -7,6 +7,24 @@ const PRIVATE_SERVICE_KEY = process.env.PRIVATE_SUPABASE_SERVICE_ROLE_KEY;
 const SNOWFLAKE = /^\d{17,20}$/;
 const TIMEOUT_MS = 12_000;
 
+// Safe metadata fallback only. No private records or secrets live here.
+// This ensures known private servers still render their private dashboard shell
+// if Vercel temporarily loses the private database credential.
+const PRIVATE_BUILD_FALLBACK = {
+  '1222024653795496006': {
+    guild_id: '1222024653795496006', display_name: 'The Dark Side', brand: 'tds', premium: true,
+    modules: { overview: true, staff: true, tickets: true, economy: true, subscriptions: true, moderation: true, automation: true, safety: true },
+  },
+  '1292479541272383552': {
+    guild_id: '1292479541272383552', display_name: 'Buds and Butts', brand: 'buds', premium: false,
+    modules: { overview: true, staff: true, tickets: true, economy: true, subscriptions: false, moderation: false, automation: true, safety: true },
+  },
+  '1534849711331213512': {
+    guild_id: '1534849711331213512', display_name: 'Velvet', brand: 'velvet', premium: true,
+    modules: { overview: true, staff: false, tickets: true, economy: false, subscriptions: true, moderation: false, automation: false, safety: true },
+  },
+};
+
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 function send(res, status, body, id) {
   res.setHeader('Cache-Control', 'no-store, max-age=0');
@@ -50,6 +68,15 @@ async function privateRest(path) {
 }
 async function safe(fn, fallback) { try { return await fn(); } catch (e) { console.error('private dashboard optional query:', e?.message || e); return fallback; } }
 function sum(rows, key) { return rows.reduce((n, row) => n + Number(row?.[key] || 0), 0); }
+function emptyStats() {
+  return {
+    tickets: { total: 0, open: 0, claimed: 0, average_rating: null },
+    staff: { members: 0, active_shifts: 0 },
+    economy: { users: 0, total_nugs: 0 },
+    subscriptions: { active: 0, tiers: {} },
+    moderation: { cases: 0 },
+  };
+}
 
 export default async function handler(req, res) {
   const requestId = randomUUID();
@@ -61,12 +88,20 @@ export default async function handler(req, res) {
     if (!user || !SNOWFLAKE.test(discordUserId(user))) throw new HttpError(401, 'Sign in with Discord first.');
     const guild = await authorisedGuild(String(req.headers['x-discord-provider-token'] || ''), guildId);
 
+    // Known private servers should still open even if the private DB env var is
+    // missing. The UI can then clearly say live private data is reconnecting.
     if (!PRIVATE_SERVICE_KEY) {
-      return send(res, 200, { guild: { id: guild.id, name: guild.name }, private_build: null, configured: false, request_id: requestId }, requestId);
+      const fallback = PRIVATE_BUILD_FALLBACK[guildId] || null;
+      return send(res, 200, {
+        guild: { id: guild.id, name: guild.name },
+        private_build: fallback ? { ...fallback, stats: emptyStats(), data_connected: false } : null,
+        configured: false,
+        request_id: requestId,
+      }, requestId);
     }
 
     const registry = await safe(() => privateRest(`bound_private_dashboard_servers?select=guild_id,display_name,enabled,brand,premium,modules&guild_id=eq.${guildId}&enabled=eq.true&limit=1`), []);
-    const build = registry?.[0] || null;
+    const build = registry?.[0] || PRIVATE_BUILD_FALLBACK[guildId] || null;
     if (!build) return send(res, 200, { guild: { id: guild.id, name: guild.name }, private_build: null, configured: true, request_id: requestId }, requestId);
 
     const modules = build.modules || {};
@@ -93,6 +128,7 @@ export default async function handler(req, res) {
         brand: build.brand,
         premium: Boolean(build.premium),
         modules,
+        data_connected: true,
         stats: {
           tickets: { total: tickets.length, open: openTickets.length, claimed: openTickets.filter(t => t.claimed_by).length, average_rating: ratings.length ? Number((ratings.reduce((a,b)=>a+b,0)/ratings.length).toFixed(1)) : null },
           staff: { members: staffMembers.length, active_shifts: activeStaff.length },
