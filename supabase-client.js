@@ -16,7 +16,14 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './dashboard-config.js';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    flowType: 'pkce',
+    storage: window.localStorage,
+    storageKey: 'bound-auth-session',
+  },
 });
 
 const TOKEN_KEY = 'bound_discord_provider_token';
@@ -128,3 +135,4 @@ supabase.auth.onAuthStateChange((event, session) => {
   }
   if (event === 'SIGNED_OUT') clearProviderTokens();
 });
+
