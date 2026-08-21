@@ -19,7 +19,7 @@ Discord provider enabled with the Bound Discord application. The production site
 - safety cases/counts
 - active cages
 - active gags
-- global Nugs circulation
+- global Bonds circulation
 - recent game activity
 
 ## Deliberately not writable yet
