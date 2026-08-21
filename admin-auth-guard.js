@@ -1,15 +1,19 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/+esm';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './dashboard-config.js';
+import { supabase, getStoredProviderToken, providerTokenAgeMs, ensureFreshProviderToken } from './supabase-client.js';
 
-const supabase=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
-const MAX_AGE=30*60*1000;
+// This is a LOCAL cache window, not the real security boundary - every admin
+// action is independently re-checked against Discord's actual permissions
+// server-side in api/dashboard.js on every request. So this can be generous:
+// it only decides how long the browser goes before it bothers refreshing the
+// Discord token at all. A background loop (see arm() below) keeps refreshing
+// well before this window closes, so in normal use isFresh() almost never
+// goes false while the tab stays open.
+const MAX_AGE=6*60*60*1000;
+const BACKGROUND_REFRESH_MS=20*60*1000;
 const ADMIN_VIEWS=new Set(['servers','safety','tickets','economy','staff','logs','settings','private']);
 const STAMP_KEY='bound_discord_admin_verified_at';
-const TOKEN_KEYS=['bound_discord_provider_token','bound_discord_provider_token_backup'];
 
-function providerToken(){return sessionStorage.getItem(TOKEN_KEYS[0])||localStorage.getItem(TOKEN_KEYS[1])||''}
 function verifiedAt(){return Number(localStorage.getItem(STAMP_KEY)||0)}
-function isFresh(){const stamp=verifiedAt();return Boolean(providerToken()&&stamp&&Date.now()-stamp<MAX_AGE)}
+function isFresh(){return Boolean(getStoredProviderToken()&&providerTokenAgeMs()<MAX_AGE)}
 function ageText(){const stamp=verifiedAt();if(!stamp)return'Not verified this session';const mins=Math.max(1,Math.floor((Date.now()-stamp)/60000));return mins<60?`${mins}m ago`:`${Math.floor(mins/60)}h ago`}
 
 function ensureStyle(){if(document.getElementById('boundAdminGuardStyle'))return;const s=document.createElement('style');s.id='boundAdminGuardStyle';s.textContent=`.bound-admin-guard{position:fixed;inset:0;z-index:100000;display:grid;place-items:center;padding:18px;background:rgba(5,4,7,.78);backdrop-filter:blur(16px)}.bound-admin-guard[hidden]{display:none}.bound-admin-guard-card{width:min(470px,100%);border:1px solid rgba(255,255,255,.1);border-radius:22px;background:linear-gradient(145deg,#17121b,#0c090f);box-shadow:0 30px 100px rgba(0,0,0,.5);padding:24px}.bound-admin-guard-badge{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border-radius:999px;background:rgba(240,108,195,.1);color:#efacd6;font:800 8px Inter,sans-serif;letter-spacing:.1em}.bound-admin-guard h3{font:700 27px 'Space Grotesk',Inter,sans-serif;margin:13px 0 8px}.bound-admin-guard p{color:#918693;font:400 10px/1.65 Inter,sans-serif}.bound-admin-guard-info{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0}.bound-admin-guard-info div{padding:12px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.055)}.bound-admin-guard-info small{display:block;color:#756c78;font-size:7px;letter-spacing:.1em}.bound-admin-guard-info b{display:block;margin-top:5px;font-size:10px}.bound-admin-guard-actions{display:flex;gap:8px}.bound-admin-guard button{border:0;border-radius:11px;padding:11px 14px;font:800 9px Inter,sans-serif;cursor:pointer}.bound-admin-refresh{flex:1;background:linear-gradient(135deg,#f06cc3,#b649a2);color:#180c15}.bound-admin-cancel{background:rgba(255,255,255,.05);color:#ddd3df;border:1px solid rgba(255,255,255,.08)!important}.bound-admin-fresh{display:inline-flex;align-items:center;gap:6px;font-size:8px;color:#79e3ae}.bound-admin-fresh i{width:6px;height:6px;border-radius:50%;background:#79e3ae}@media(max-width:520px){.bound-admin-guard-info{grid-template-columns:1fr}.bound-admin-guard-actions{flex-direction:column}}`;document.head.appendChild(s)}
@@ -28,4 +32,12 @@ window.boundRequireFreshAdminAuth=()=>{if(isFresh())return true;prompt();return 
 window.boundAdminAuthFresh=isFresh;
 
 const badge=()=>{const host=document.querySelector('.topbar-actions');if(!host||document.getElementById('boundAdminFresh'))return;const el=document.createElement('span');el.id='boundAdminFresh';el.className='bound-admin-fresh';el.innerHTML='<i></i><span>Admin verified</span>';host.prepend(el);const sync=()=>{el.style.display=isFresh()?'inline-flex':'none'};sync();setInterval(sync,60000)};
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',badge);else badge();
+
+// Keep the Discord token silently refreshed well before MAX_AGE closes, so a
+// signed-in admin essentially never sees the "refresh with Discord" prompt
+// during normal use - only when the refresh token itself has actually been
+// revoked (e.g. the user removed Bound's Discord authorisation).
+async function keepFresh(){try{await ensureFreshProviderToken({maxAgeMs:MAX_AGE});}catch(error){console.error('Bound background Discord refresh failed:',error);}}
+const armBackgroundRefresh=()=>{keepFresh();setInterval(keepFresh,BACKGROUND_REFRESH_MS);document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepFresh();});};
+
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{badge();armBackgroundRefresh();});else{badge();armBackgroundRefresh();}

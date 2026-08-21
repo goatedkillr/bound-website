@@ -56,20 +56,23 @@
       if(faction){
         card.innerHTML=`<div class="panel-title"><div><small>YOUR BOUND FACTION</small><h3>${esc(faction.faction_name||'Faction')}</h3></div><span class="all-good">${esc(String(faction.faction_role||'member').toUpperCase())}</span></div><div class="finish-pills" style="margin:12px 0 4px"><span>Level ${Number(faction.faction_level||1)}</span><span>${Number(faction.power||0).toLocaleString('en-GB')} power</span><span>${Number(faction.money||0).toLocaleString('en-GB')} Nugs</span></div><p style="color:#8d838f;font-size:10px;line-height:1.65;margin:12px 0 0">You are connected to this faction through Bound. Use Discord for applications member actions and faction commands.</p>`;
       }else{
-        card.innerHTML=`<div class="panel-title"><div><small>YOUR BOUND FACTION</small><h3>You are not in a faction yet</h3></div><span class="finish-state locked">OPEN</span></div><p style="color:#8d838f;font-size:10px;line-height:1.7;margin:0">Use <b>/faction apply</b> in Discord to apply to an existing faction. If you want a new faction created for your community open a ticket in Bound Society and the team can review the request.</p>${openDiscord('Open Bound Society')}`;
+        const browse=Array.isArray(data?.factions_browse)?data.factions_browse:[];
+        const rows=browse.length?browse.map(f=>`<div class="faction-browse-row"><span class="mini-avatar">${initial(f.faction_name)}</span><div class="faction-browse-name"><b>${esc(f.faction_name||'Faction')}</b><small>Level ${Number(f.faction_level||1)} • ${Number(f.member_count||0)} members</small></div><div class="faction-browse-stats"><span>${Number(f.power||0).toLocaleString('en-GB')} power</span><span>${Number(f.money||0).toLocaleString('en-GB')} Nugs</span></div></div>`).join(''):'';
+        card.innerHTML=`<div class="panel-title"><div><small>YOU ARE NOT IN A FACTION YET</small><h3>Browse existing factions</h3></div><span class="finish-state locked">OPEN</span></div><p style="color:#8d838f;font-size:10px;line-height:1.7;margin:0 0 12px">Use <b>/faction apply</b> in Discord to apply to one of these, or open a ticket in Bound Society if you want a new faction created for your community.</p>${rows?`<div class="faction-browse-list">${rows}</div>`:'<p style="color:#8d838f;font-size:10px;line-height:1.6;margin:0 0 12px">No factions exist yet.</p>'}${openDiscord('Open Bound Society')}`;
       }
     }
   }
 
   async function loadPersonalContext(){
     try{
-      const [{createClient},{SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY}]=await Promise.all([
-        import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/+esm'),
-        import('./dashboard-config.js'),
-      ]);
-      const client=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+      const{supabase:client}=await import('./supabase-client.js');
       let session=(await client.auth.getSession()).data.session;
-      if(!session){await new Promise(resolve=>setTimeout(resolve,900));session=(await client.auth.getSession()).data.session;}
+      if(!session?.access_token){
+        session=await new Promise(resolve=>{
+          const timer=setTimeout(()=>{sub.subscription.unsubscribe();resolve(null)},4000);
+          const sub=client.auth.onAuthStateChange((event,s)=>{if(s?.access_token){clearTimeout(timer);sub.subscription.unsubscribe();resolve(s)}});
+        });
+      }
       if(!session?.access_token)return;
       const response=await fetch('/api/personal-context',{headers:{Authorization:`Bearer ${session.access_token}`}});
       const data=await response.json().catch(()=>({}));

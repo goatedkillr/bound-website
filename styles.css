@@ -3,3 +3,11 @@
 /* Bound logo hard limits — prevents the source PNG from overflowing on any viewport. */
 .brand-mark{overflow:hidden;flex:0 0 42px;min-width:42px;min-height:42px;max-width:42px;max-height:42px}
 .brand-mark img{display:block!important;width:42px!important;height:42px!important;min-width:42px!important;min-height:42px!important;max-width:42px!important;max-height:42px!important;object-fit:cover!important;position:static!important;inset:auto!important;transform:none!important}
+
+/* Homepage safety section - live Safety Team / reviewed-cases trust strip */
+.safety-live{display:flex;align-items:center;gap:22px;margin-top:30px;padding:16px 22px;border:1px solid rgba(121,227,174,.15);border-radius:16px;background:rgba(121,227,174,.045)}
+.safety-live-stat{min-width:0}
+.safety-live-stat b{display:block;font-family:"Space Grotesk",Inter,sans-serif;font-size:26px;color:var(--green);line-height:1}
+.safety-live-stat span{display:block;font-size:9px;color:#a89ba7;letter-spacing:.03em;margin-top:6px}
+.safety-live-divider{width:1px;height:34px;background:rgba(255,255,255,.09);flex:0 0 auto}
+@media(max-width:620px){.safety-live{flex-wrap:wrap;gap:16px;padding:14px 16px}.safety-live-stat b{font-size:22px}}

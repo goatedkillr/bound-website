@@ -1,7 +1,5 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/+esm';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './dashboard-config.js';
+import { supabase, getStoredProviderToken, ensureFreshProviderToken, refreshProviderToken, clearProviderTokens } from './supabase-client.js';
 
-const supabase=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
 const $=id=>document.getElementById(id);
 const pages={overview:'Overview',profile:'My Bound Profile',servers:'Servers',safety:'Safety & Consent',moderation:'Moderation',tickets:'Tickets & Support',economy:'Factions',staff:'Staff',roleplay:'Social & RP',logs:'Audit Log',settings:'Server Settings'};
 const generic={
@@ -13,7 +11,7 @@ const generic={
  roleplay:['Social & RP','Ownership, gagging and social systems share the same Supabase backend.',[['♡','Interactions','Hug, kiss, bite, cuddle and more'],['◉','Ownership','Claims, owners and subs'],['◇','Gag system','Consent-based gag controls']]],
  logs:['Audit Log','Recent activity is loaded on Overview. Full audit search is the next dashboard module.',[['≣','Moderation','Actions and reasons'],['₦','Factions','Nugs and faction activity'],['◆','Safety','Protected review history']]],
 };
-let session=null,providerToken=sessionStorage.getItem('bound_discord_provider_token')||null,managedGuilds=[],selectedGuildId=localStorage.getItem('bound_dashboard_guild')||null,overview=null,bootstrapRunning=false;
+let session=null,providerToken=getStoredProviderToken()||null,managedGuilds=[],selectedGuildId=localStorage.getItem('bound_dashboard_guild')||null,overview=null,bootstrapRunning=false;
 
 function escapeHtml(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function avatarFallback(v='B'){return String(v).trim().charAt(0).toUpperCase()||'B';}
@@ -35,11 +33,76 @@ if($('uptimeBars'))$('uptimeBars').innerHTML=Array.from({length:36},()=>'<i></i>
 async function signInWithDiscord(){try{setLoading($('authDiscordBtn'),true,'Opening Discord…');const{error}=await supabase.auth.signInWithOAuth({provider:'discord',options:{scopes:'identify guilds',redirectTo:`${location.origin}/dashboard.html`}});if(error)throw error}catch(e){toast('Discord login failed',e.message||'Could not start login.');setLoading($('authDiscordBtn'),false)}}
 $('authDiscordBtn')?.addEventListener('click',signInWithDiscord);
 $('loginBtn')?.addEventListener('click',()=>session?toggleServerPicker():signInWithDiscord());
-$('logoutBtn')?.addEventListener('click',async()=>{await supabase.auth.signOut();sessionStorage.removeItem('bound_discord_provider_token');localStorage.removeItem('bound_dashboard_guild');session=null;providerToken=null;managedGuilds=[];selectedGuildId=null;renderSignedOut()});
-function renderSignedOut(){$('authGate')?.classList.remove('hidden');if($('loginBtn'))$('loginBtn').textContent='Discord Login';if($('userName'))$('userName').textContent='Not signed in';if($('userRole'))$('userRole').textContent='Discord account';applyAvatar($('userAvatar'),null,'?');if($('serverName'))$('serverName').textContent='Choose a server';applyServerIcon($('serverIcon'),null,'B');}
-async function api(action,{guildId,method='GET',body}={}){if(!session?.access_token)throw new Error('Your session expired. Sign in again.');if(!providerToken)throw new Error('Discord server access expired. Reconnect Discord.');const q=new URLSearchParams({action});if(guildId)q.set('guild_id',guildId);const r=await fetch(`/api/dashboard?${q}`,{method,headers:{Authorization:`Bearer ${session.access_token}`,'X-Discord-Provider-Token':providerToken,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.error||`Dashboard API failed (${r.status}).`);return d;}
+$('logoutBtn')?.addEventListener('click',async()=>{await supabase.auth.signOut();clearProviderTokens();localStorage.removeItem('bound_dashboard_guild');session=null;providerToken=null;managedGuilds=[];selectedGuildId=null;renderSignedOut()});
+function renderSignedOut(reason){
+ $('authGate')?.classList.remove('hidden');
+ // A Bound username/password account (created via Account for faster future
+ // logins) still has to link Discord before the dashboard can list servers -
+ // that's a real, different state from "not signed in at all", and showing
+ // the same generic gate for both used to look like a broken dead end.
+ const noDiscord=reason==='no-discord';
+ if($('loginBtn'))$('loginBtn').textContent=noDiscord?'Connect Discord':'Discord Login';
+ if($('userName'))$('userName').textContent=noDiscord?'Discord not connected':'Not signed in';
+ if($('userRole'))$('userRole').textContent='Discord account';
+ applyAvatar($('userAvatar'),null,'?');
+ if($('serverName'))$('serverName').textContent='Choose a server';
+ applyServerIcon($('serverIcon'),null,'B');
+ const gateHeading=document.querySelector('#authGate h2'),gateCopy=document.querySelector('#authGate p'),gateBtn=$('authDiscordBtn');
+ if(noDiscord){
+   if(gateHeading)gateHeading.textContent='Connect Discord to continue';
+   if(gateCopy)gateCopy.textContent='You are signed in to your Bound account, but the dashboard still needs Discord to know which servers you can manage.';
+   if(gateBtn)gateBtn.textContent='Connect Discord';
+ }else{
+   if(gateHeading)gateHeading.textContent='Manage Bound with Discord';
+   if(gateCopy)gateCopy.textContent='Sign in to see only the servers you are allowed to manage';
+   if(gateBtn)gateBtn.textContent='Continue with Discord';
+ }
+}
+async function apiCall(action,{guildId,method='GET',body}={}){const q=new URLSearchParams({action});if(guildId)q.set('guild_id',guildId);return fetch(`/api/dashboard?${q}`,{method,headers:{Authorization:`Bearer ${session.access_token}`,'X-Discord-Provider-Token':providerToken,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});}
+// Discord's access token is short-lived; rather than surface "reconnect
+// Discord" the moment it expires, try a silent refresh (backed by the
+// Discord refresh token captured at sign-in) and transparently retry once
+// before ever bothering the user with a real Discord redirect.
+async function api(action,opts={}){
+  if(!session?.access_token)throw new Error('Your session expired. Sign in again.');
+  if(!providerToken){const fresh=await ensureFreshProviderToken();if(fresh)providerToken=fresh;else throw new Error('Discord server access expired. Reconnect Discord.');}
+  let r=await apiCall(action,opts);
+  if(r.status===401){const refreshed=await refreshProviderToken();if(refreshed){providerToken=refreshed;r=await apiCall(action,opts);}}
+  let d={};try{d=await r.json()}catch{}
+  if(!r.ok)throw new Error(d.error||`Dashboard API failed (${r.status}).`);
+  return d;
+}
 
-async function bootstrap(){if(bootstrapRunning||!session||!providerToken)return;bootstrapRunning=true;try{const d=await api('bootstrap');managedGuilds=d.guilds||[];const u=d.user||{};$('authGate')?.classList.add('hidden');if($('userName'))$('userName').textContent=u.display_name||u.username||'Discord user';if($('userRole'))$('userRole').textContent='Discord connected';applyAvatar($('userAvatar'),u.avatar_url,u.display_name||u.username);if($('loginBtn'))$('loginBtn').textContent=u.display_name||u.username||'Discord';renderGuildPicker();if(selectedGuildId&&!managedGuilds.some(g=>g.id===selectedGuildId))selectedGuildId=null;if(!selectedGuildId)selectedGuildId=(managedGuilds.find(g=>g.bound_installed)||managedGuilds[0])?.id||null;if(selectedGuildId)await chooseGuild(selectedGuildId,false)}catch(e){console.error(e);toast('Dashboard unavailable',e.message);$('authGate')?.classList.remove('hidden')}finally{bootstrapRunning=false}}
+async function bootstrap(){
+  if(bootstrapRunning||!session||!providerToken)return;
+  bootstrapRunning=true;
+  try{
+    // Passing the last-selected guild lets the server fold that guild's
+    // overview into this same response - saves a whole extra request on
+    // first paint versus always following up with a separate loadOverview().
+    const d=await api('bootstrap',{guildId:selectedGuildId||undefined});
+    managedGuilds=d.guilds||[];
+    const u=d.user||{};
+    $('authGate')?.classList.add('hidden');
+    if($('userName'))$('userName').textContent=u.display_name||u.username||'Discord user';
+    if($('userRole'))$('userRole').textContent='Discord connected';
+    applyAvatar($('userAvatar'),u.avatar_url,u.display_name||u.username);
+    if($('loginBtn'))$('loginBtn').textContent=u.display_name||u.username||'Discord';
+    renderGuildPicker();
+    if(selectedGuildId&&!managedGuilds.some(g=>g.id===selectedGuildId))selectedGuildId=null;
+    if(!selectedGuildId)selectedGuildId=(managedGuilds.find(g=>g.bound_installed)||managedGuilds[0])?.id||null;
+    if(!selectedGuildId)return;
+    if(d.overview&&d.overview.guild?.id===selectedGuildId){
+      localStorage.setItem('bound_dashboard_guild',selectedGuildId);
+      renderGuildPicker();
+      const g=managedGuilds.find(x=>x.id===selectedGuildId);
+      if(g){if($('serverName'))$('serverName').textContent=g.name;applyServerIcon($('serverIcon'),g.icon_url,g.name)}
+      applyOverview(d.overview);
+    }else{
+      await chooseGuild(selectedGuildId,false);
+    }
+  }catch(e){console.error(e);toast('Dashboard unavailable',e.message);$('authGate')?.classList.remove('hidden')}finally{bootstrapRunning=false}
+}
 function factionStatusText(s){return s==='approved'?'Faction approved':s==='needs_owner_migration'?'Needs owner migration':'Awaiting owner approval';}
 function renderGuildPicker(){const p=$('serverPicker');if(!p)return;if(!managedGuilds.length){p.innerHTML='<div class="picker-empty">No manageable servers found.</div>';return}p.innerHTML=managedGuilds.map(g=>`<button class="server-option ${g.id===selectedGuildId?'active':''}" data-guild-id="${g.id}">${g.icon_url?`<img src="${g.icon_url}" alt="${escapeHtml(g.name)} icon"><span style="display:none">${avatarFallback(g.name)}</span>`:`<span>${avatarFallback(g.name)}</span>`}<div><b>${escapeHtml(g.name)}</b><small>${g.bound_installed?'Bound detected':'Bound data not detected'} • ${factionStatusText(g.faction_status)}</small></div>${g.faction_status==='approved'?'<em>FACTION</em>':g.bound_installed?'<em>BOUND</em>':''}</button>`).join('');p.querySelectorAll('[data-guild-id]').forEach(b=>b.addEventListener('click',()=>chooseGuild(b.dataset.guildId,true)));}
 function toggleServerPicker(){const p=$('serverPicker');if(p)p.hidden=!p.hidden}
@@ -61,11 +124,12 @@ hydrateLegacySettings();
 async function toggleSetting(btn){if(!selectedGuildId)return toast('Choose a server','Select a server first.');if(btn.disabled||btn.dataset.saving==='1')return;const old=btn.classList.contains('on'),next=!old;setSwitchState(btn,next);btn.dataset.saving='1';btn.disabled=true;try{const d=await api('toggle',{guildId:selectedGuildId,method:'PATCH',body:{group:btn.dataset.group,key:btn.dataset.key,value:next}});setSwitchState(btn,d.value);toast('Setting updated',`${btn.closest('label')?.querySelector('b')?.textContent||'Setting'} is now ${d.value?'enabled':'disabled'}.`)}catch(e){setSwitchState(btn,old);toast('Could not update setting',e.message)}finally{btn.dataset.saving='0';if(btn.dataset.group!=='faction'||overview?.faction?.approved)btn.disabled=false}}
 async function saveGagConfig(){if(!selectedGuildId)return;const btn=$('saveGagConfig');try{setLoading(btn,true,'Saving…');const blocked=($('gagBlockedChannels')?.value||'').split(',').map(x=>x.trim()).filter(Boolean);const d=await api('gag_config',{guildId:selectedGuildId,method:'PATCH',body:{log_channel_id:$('gagLogChannel')?.value||'',blocked_channel_ids:blocked}});toast('Gag config saved','Gag safety channels are synced to Supabase.');if(d.config)renderGagConfig(d.config)}catch(e){toast('Could not save gag config',e.message)}finally{setLoading(btn,false)}}
 
-async function loadOverview(){if(!selectedGuildId)return;try{overview=await api('overview',{guildId:selectedGuildId});const d=overview;if($('serverName'))$('serverName').textContent=d.guild?.name||'Server';applyServerIcon($('serverIcon'),d.guild?.icon_url,d.guild?.name);if($('metricGuildStatus'))$('metricGuildStatus').textContent=d.activation?.tos_accepted?'Activated':'Setup';if($('metricTos'))$('metricTos').textContent=d.activation?.tos_accepted?'Terms accepted':'Terms pending';if($('metricVerified'))$('metricVerified').textContent=d.verification?'Yes':'No';if($('metricSafety'))$('metricSafety').textContent=String(d.safety?.pending??0);if($('metricNugs'))$('metricNugs').textContent=d.economy?.total_nugs_display||'0';if($('metricEconomyUsers'))$('metricEconomyUsers').textContent=String(d.economy?.users??0);if($('safetyOpen'))$('safetyOpen').textContent=String(d.safety?.pending??0);if($('safetyCages'))$('safetyCages').textContent=String(d.safety?.cages?.length??0);if($('safetyGags'))$('safetyGags').textContent=String(d.safety?.active_gags?.length??0);if($('safetyNetwork'))$('safetyNetwork').textContent=d.safety?.config?.safety_enabled?'Enabled':'Disabled';if($('economyCirculation'))$('economyCirculation').textContent=d.faction?.approved?fmt(d.faction.faction?.money):'Locked';if($('economyUsers'))$('economyUsers').textContent=d.faction?.approved?String(d.faction.members?.length||0):'—';if($('economySync'))$('economySync').textContent=d.faction?.approved?'Approved':'Locked';if($('prefixInput'))$('prefixInput').value=d.settings?.prefix||'£';renderActivity(d.activity||[]);renderSafetyRows(d.safety?.cases||[]);renderSwitches(d);renderFaction(d.faction);renderGagConfig(d.safety?.gag_config||{});renderFactionLeaderboard(d.faction?.members||[])}catch(e){console.error(e);toast('Live data unavailable',e.message)}}
-function renderSwitches(d){const s=d.safety?.config||{},v=d.verification||{};document.querySelectorAll('.switch[data-group="safety"]').forEach(b=>setSwitchState(b,s[b.dataset.key]??false));document.querySelectorAll('.switch[data-group="verify"]').forEach(b=>setSwitchState(b,v[b.dataset.key]??false));const f=document.querySelector('.switch[data-group="faction"]');if(f){setSwitchState(f,d.faction?.faction?.applications_open??false);f.disabled=!d.faction?.approved}}
-function renderFaction(f){const title=$('factionStatusTitle'),badge=$('factionStatusBadge'),text=$('factionStatusText');if(!f)return;if(f.approved){title.textContent=f.faction?.faction_name||'Approved faction';badge.textContent='APPROVED';text.textContent=`This Discord server is the faction “${f.faction?.faction_name||'Faction'}”. Treasury: ${fmt(f.faction?.money)} Nugs • Power: ${fmt(f.faction?.power)} • Level: ${f.faction?.faction_level||1}.`}else if(f.ambiguous){title.textContent='Needs owner migration';badge.textContent='LOCKED';text.textContent=`This server currently has ${f.matches} factions linked to it. Controls stay locked until the Bound owner chooses the canonical server faction.`}else{title.textContent='Awaiting owner approval';badge.textContent='LOCKED';text.textContent='Factions are automatically disabled for this server until the Bound owner approves it and links one canonical faction.'}}
+async function loadOverview(){if(!selectedGuildId)return;try{applyOverview(await api('overview',{guildId:selectedGuildId}))}catch(e){console.error(e);toast('Live data unavailable',e.message)}}
+function applyOverview(data){overview=data;const d=overview;if($('serverName'))$('serverName').textContent=d.guild?.name||'Server';applyServerIcon($('serverIcon'),d.guild?.icon_url,d.guild?.name);if($('metricGuildStatus'))$('metricGuildStatus').textContent=d.activation?.tos_accepted?'Activated':'Setup';if($('metricTos'))$('metricTos').textContent=d.activation?.tos_accepted?'Terms accepted':'Terms pending';if($('metricVerified'))$('metricVerified').textContent=d.verification?'Yes':'No';if($('metricSafety'))$('metricSafety').textContent=String(d.safety?.pending??0);if($('metricNugs'))$('metricNugs').textContent=d.economy?.total_nugs_display||'0';if($('metricEconomyUsers'))$('metricEconomyUsers').textContent=String(d.economy?.users??0);if($('safetyOpen'))$('safetyOpen').textContent=String(d.safety?.pending??0);if($('safetyCages'))$('safetyCages').textContent=String(d.safety?.cages?.length??0);if($('safetyGags'))$('safetyGags').textContent=String(d.safety?.active_gags?.length??0);if($('safetyNetwork'))$('safetyNetwork').textContent=d.safety?.config?.safety_enabled?'Enabled':'Disabled';if($('economyCirculation'))$('economyCirculation').textContent=d.faction?.display_faction?fmt(d.faction.display_faction.money):'No faction linked';if($('economyUsers'))$('economyUsers').textContent=d.faction?.display_faction?String(d.faction.members?.length||0):'—';if($('economySync'))$('economySync').textContent=d.faction?.approved?'Approved':(d.faction?.display_faction?'Pending approval':'Locked');if($('prefixInput'))$('prefixInput').value=d.settings?.prefix||'£';renderActivity(d.activity||[]);renderSafetyRows(d.safety?.cases||[]);renderSwitches(d);renderFaction(d.faction);renderGagConfig(d.safety?.gag_config||{});renderFactionLeaderboard(d.faction?.members||[])}
+function renderSwitches(d){const s=d.safety?.config||{},v=d.verification||{};document.querySelectorAll('.switch[data-group="safety"]').forEach(b=>setSwitchState(b,s[b.dataset.key]??false));document.querySelectorAll('.switch[data-group="verify"]').forEach(b=>setSwitchState(b,v[b.dataset.key]??false));const f=document.querySelector('.switch[data-group="faction"]');if(f){setSwitchState(f,d.faction?.display_faction?.applications_open??false);f.disabled=!d.faction?.approved}}
+function renderFaction(f){const title=$('factionStatusTitle'),badge=$('factionStatusBadge'),text=$('factionStatusText');if(!f)return;const df=f.display_faction;if(f.approved){title.textContent=df?.faction_name||'Approved faction';badge.textContent='APPROVED';text.textContent=`This Discord server is the faction “${df?.faction_name||'Faction'}”. Treasury: ${fmt(df?.money)} Nugs • Power: ${fmt(df?.power)} • Level: ${df?.faction_level||1}.`}else if(f.ambiguous){title.textContent='Needs owner migration';badge.textContent='LOCKED';text.textContent=`This server currently has ${f.matches} factions linked to it. Controls stay locked until the Bound owner chooses the canonical server faction.`}else if(df){title.textContent=df.faction_name||'Faction (pending approval)';badge.textContent='PENDING APPROVAL';text.textContent=`This server is linked to “${df.faction_name||'Faction'}” but the Bound owner has not approved it as canonical yet. Treasury: ${fmt(df.money)} Nugs • Power: ${fmt(df.power)} • Level: ${df.faction_level||1}. Admin controls stay locked until approval.`}else{title.textContent='Awaiting owner approval';badge.textContent='LOCKED';text.textContent='No faction is linked to this Discord server yet.'}}
 function renderGagConfig(c){if($('gagLogChannel'))$('gagLogChannel').value=c.log_channel_id||'';if($('gagBlockedChannels'))$('gagBlockedChannels').value=(c.blocked_channel_ids||[]).join(', ')}
-function renderFactionLeaderboard(rows){const el=document.querySelector('#view-economy .leaderboard');if(!el)return;if(!overview?.faction?.approved){el.innerHTML='<div class="empty-state">Faction locked until owner approval.</div>';return}if(!rows.length){el.innerHTML='<div class="empty-state">No faction members yet.</div>';return}el.innerHTML=rows.slice(0,8).map((m,i)=>`<div><em>${i+1}</em><span class="mini-avatar">${avatarFallback(m.display_name)}</span><b>${escapeHtml(m.display_name)}</b><strong>${fmt(m.balance)} ₦</strong></div>`).join('')}
+function renderFactionLeaderboard(rows){const el=document.querySelector('#view-economy .leaderboard');if(!el)return;if(!overview?.faction?.display_faction){el.innerHTML='<div class="empty-state">No faction linked to this server yet.</div>';return}if(!rows.length){el.innerHTML='<div class="empty-state">No faction members yet.</div>';return}el.innerHTML=rows.slice(0,8).map((m,i)=>`<div><em>${i+1}</em><span class="mini-avatar">${avatarFallback(m.display_name)}</span><b>${escapeHtml(m.display_name)}</b><strong>${fmt(m.balance)} ₦</strong></div>`).join('')}
 function renderSafetyRows(rows){const el=$('safetyRows');if(!el)return;if(!rows.length){el.innerHTML='<div class="empty-state table-empty">No recent safety cases for this server.</div>';return}el.innerHTML=rows.map(r=>`<div class="table-row"><span><i class="mini-avatar">${avatarFallback(r.reported_user_id)}</i>${escapeHtml(r.reported_user_id)}</span><span>${escapeHtml((r.requested_flag_type||'case').replaceAll('_',' '))}</span><span>${r.created_at?new Date(r.created_at).toLocaleDateString():'—'}</span><span><em class="risk ${r.requested_flag_type==='minor_safety'?'high':'medium'}">${r.requested_flag_type==='minor_safety'?'HIGH':'REVIEW'}</em></span><span>${escapeHtml(r.status||'unknown')}</span></div>`).join('')}
 function renderActivity(rows){const el=$('activityList');if(!el)return;if(!rows.length){el.innerHTML='<div class="empty-state">No recent activity for this server.</div>';return}el.innerHTML=rows.map(r=>`<div class="activity-item"><span class="activity-icon">₦</span><div><b>${escapeHtml((r.activity_type||'activity').replaceAll('_',' '))}</b><small>User ${escapeHtml(r.user_id)}${Number(r.money_earned||0)?` • ${fmt(r.money_earned)} Nugs`:''}</small></div><small>${relativeTime(r.created_at)}</small></div>`).join('')}
 
@@ -74,18 +138,23 @@ $('saveSettings')?.addEventListener('click',async()=>{if(!selectedGuildId)return
 
 supabase.auth.onAuthStateChange((event,newSession)=>{
  session=newSession;
- if(newSession?.provider_token){providerToken=newSession.provider_token;sessionStorage.setItem('bound_discord_provider_token',providerToken)}
- if(event==='SIGNED_OUT'){providerToken=null;sessionStorage.removeItem('bound_discord_provider_token');renderSignedOut();return}
+ if(newSession?.provider_token)providerToken=newSession.provider_token;
+ if(event==='SIGNED_OUT'){providerToken=null;renderSignedOut();return}
  if(newSession&&providerToken&&(event==='SIGNED_IN'||event==='TOKEN_REFRESHED'||event==='INITIAL_SESSION')){queueMicrotask(()=>bootstrap())}
 });
 
 (async()=>{
  const{data:{session:existing}}=await supabase.auth.getSession();
  session=existing;
- if(existing?.provider_token){providerToken=existing.provider_token;sessionStorage.setItem('bound_discord_provider_token',providerToken)}
+ if(existing?.provider_token)providerToken=existing.provider_token;
  if(session&&providerToken){await bootstrap();return}
  if(session&&!providerToken){
-   setTimeout(()=>{if(session&&providerToken)bootstrap();else renderSignedOut()},900);
+   // No provider token in memory yet - it may just not have landed in
+   // storage/state this tick (fresh OAuth redirect), or it may genuinely be
+   // stale. Try a silent Discord refresh before giving up and showing the
+   // signed-out gate.
+   const fresh=await ensureFreshProviderToken();
+   if(fresh){providerToken=fresh;await bootstrap();}else renderSignedOut('no-discord');
    return;
  }
  renderSignedOut();

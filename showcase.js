@@ -1,6 +1,4 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/+esm';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './dashboard-config.js';
-const supabase=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+import { supabase } from './supabase-client.js';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
 const fmt=n=>new Intl.NumberFormat('en-GB').format(Number(n||0));
 const mins=s=>fmt(Math.round(Number(s||0)/60));

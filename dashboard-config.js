@@ -37,14 +37,11 @@ try {
 if (/\/dashboard\.html$/i.test(window.location.pathname)) {
   void (async () => {
     try {
-      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/+esm');
-      const authClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true,
-        },
-      });
+      // Dynamic import (not a static one) deliberately - this module exports
+      // the SUPABASE_URL/KEY constants that supabase-client.js itself needs,
+      // so a static import here would be a circular import. Dynamic import
+      // resolves it at runtime, once this module's own exports already exist.
+      const { supabase: authClient } = await import('./supabase-client.js');
 
       const { data: { session } } = await authClient.auth.getSession();
       if (session?.access_token) {

@@ -1,24 +1,95 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/+esm';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './dashboard-config.js';
+import { supabase } from './supabase-client.js';
 
-const supabase=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
-const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const internalEmail=username=>`${String(username||'').trim().toLowerCase()}@login.bound.bot`;
-
-function style(){if(document.getElementById('boundWelcomeAuthStyle'))return;const s=document.createElement('style');s.id='boundWelcomeAuthStyle';s.textContent=`
-.bound-welcome-auth{position:fixed;inset:0;z-index:99999;display:grid;place-items:center;padding:20px;background:rgba(5,4,7,.76);backdrop-filter:blur(18px);opacity:0;transition:opacity .24s ease}.bound-welcome-auth.show{opacity:1}.bound-welcome-shell{width:min(980px,100%);max-height:min(720px,94vh);overflow:auto;display:grid;grid-template-columns:1.08fr .92fr;border:1px solid rgba(255,255,255,.1);border-radius:28px;background:linear-gradient(145deg,rgba(24,19,28,.99),rgba(10,8,13,.995));box-shadow:0 40px 120px rgba(0,0,0,.55);position:relative}.bound-welcome-close{position:absolute;right:16px;top:16px;z-index:3;width:36px;height:36px;border-radius:12px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.045);color:#a99fab;font-size:18px;cursor:pointer}.bound-welcome-close:hover{color:#fff;background:rgba(255,255,255,.08)}.bound-welcome-showcase{padding:38px;position:relative;overflow:hidden;background:radial-gradient(circle at 18% 12%,rgba(240,108,195,.16),transparent 38%),linear-gradient(150deg,rgba(46,24,43,.5),rgba(14,11,18,.2))}.bound-welcome-showcase:after{content:"";position:absolute;width:300px;height:300px;border-radius:50%;right:-110px;bottom:-140px;background:rgba(126,78,213,.12);filter:blur(30px)}.bound-welcome-brand{display:flex;align-items:center;gap:11px;position:relative;z-index:1}.bound-welcome-brand img{width:42px;height:42px;border-radius:13px;object-fit:cover}.bound-welcome-brand strong{display:block;font:700 18px 'Space Grotesk',Inter,sans-serif}.bound-welcome-brand small{display:block;color:#8c808e;font-size:8px;letter-spacing:.12em;margin-top:2px}.bound-welcome-copy{position:relative;z-index:1;margin-top:54px}.bound-welcome-kicker{font-size:8px;letter-spacing:.18em;color:#da85bf;font-weight:800}.bound-welcome-copy h2{font:700 clamp(31px,4vw,49px)/.98 'Space Grotesk',Inter,sans-serif;margin:10px 0 14px;letter-spacing:-.04em}.bound-welcome-copy h2 span{color:#f06cc3}.bound-welcome-copy>p{max-width:500px;color:#978c99;font-size:11px;line-height:1.75}.bound-welcome-teasers{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:25px;position:relative;z-index:1}.bound-welcome-teaser{padding:14px;border:1px solid rgba(255,255,255,.07);border-radius:15px;background:rgba(10,8,13,.48)}.bound-welcome-teaser small{display:block;color:#806f7d;font-size:7px;letter-spacing:.14em;font-weight:800}.bound-welcome-teaser b{display:block;font-size:11px;margin:6px 0 3px}.bound-welcome-teaser span{font-size:8px;color:#9d919e}.bound-welcome-live{display:flex;gap:7px;align-items:center;margin-top:18px;color:#7cdca9;font-size:8px;font-weight:700;position:relative;z-index:1}.bound-welcome-live i{width:7px;height:7px;border-radius:50%;background:#79e3ae;box-shadow:0 0 14px rgba(121,227,174,.75)}.bound-welcome-formside{padding:52px 38px 36px;display:flex;flex-direction:column;justify-content:center}.bound-auth-tabs{display:grid;grid-template-columns:1fr 1fr;padding:4px;border:1px solid rgba(255,255,255,.07);border-radius:13px;background:#0c0a0e;margin-bottom:24px}.bound-auth-tabs button{border:0;border-radius:9px;padding:10px;background:transparent;color:#736a76;font-size:9px;font-weight:800;cursor:pointer}.bound-auth-tabs button.active{background:rgba(240,108,195,.13);color:#f0d7e8}.bound-auth-pane{display:none}.bound-auth-pane.active{display:block}.bound-auth-pane h3{font:700 25px 'Space Grotesk',Inter,sans-serif;margin:0 0 7px}.bound-auth-pane>p{font-size:9px;line-height:1.6;color:#877d89;margin:0 0 20px}.bound-auth-field{margin-bottom:10px}.bound-auth-field label{display:block;font-size:8px;font-weight:700;color:#9a8e9c;margin-bottom:6px}.bound-auth-field input{width:100%;box-sizing:border-box;padding:12px 13px;border:1px solid rgba(255,255,255,.09);border-radius:12px;background:#0d0a10;color:#f7f1f7;outline:none;font:inherit}.bound-auth-field input:focus{border-color:rgba(240,108,195,.52);box-shadow:0 0 0 3px rgba(240,108,195,.06)}.bound-auth-main,.bound-auth-discord,.bound-auth-skip{width:100%;border-radius:12px;padding:12px;border:0;font:800 10px Inter,sans-serif;cursor:pointer}.bound-auth-main{background:linear-gradient(135deg,#f06cc3,#b94ba6);color:#190c16;margin-top:3px}.bound-auth-discord{background:#5865f2;color:white;margin-top:9px}.bound-auth-skip{background:transparent;color:#776e7a;margin-top:7px}.bound-auth-main:disabled{opacity:.55;cursor:wait}.bound-auth-message{min-height:18px;margin-top:9px;font-size:8px;color:#f4a2b3}.bound-signup-points{display:grid;gap:8px;margin:17px 0}.bound-signup-point{display:flex;gap:10px;align-items:center;padding:11px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.055)}.bound-signup-point i{font-style:normal;width:27px;height:27px;border-radius:9px;display:grid;place-items:center;background:rgba(240,108,195,.12);color:#f06cc3;font-size:11px}.bound-signup-point b{display:block;font-size:9px}.bound-signup-point small{display:block;color:#817783;font-size:7px;margin-top:2px}.bound-auth-fineprint{font-size:7px!important;color:#665e69!important;margin-top:12px!important;text-align:center}.bound-welcome-return{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:35px;background:linear-gradient(145deg,#17121b,#0c090e)}.bound-welcome-return h3{font:700 30px 'Space Grotesk',Inter,sans-serif;margin:8px}.bound-welcome-return p{font-size:10px;color:#8b818e}.bound-welcome-return a{display:inline-block;margin-top:15px;padding:12px 18px;border-radius:12px;background:linear-gradient(135deg,#f06cc3,#b94ba6);color:#160b14;text-decoration:none;font-size:10px;font-weight:800}
-@media(max-width:760px){.bound-welcome-shell{grid-template-columns:1fr}.bound-welcome-showcase{padding:28px}.bound-welcome-copy{margin-top:30px}.bound-welcome-copy h2{font-size:34px}.bound-welcome-teasers{grid-template-columns:1fr 1fr}.bound-welcome-formside{padding:30px 28px 28px}}@media(max-width:480px){.bound-welcome-auth{padding:10px}.bound-welcome-shell{border-radius:20px}.bound-welcome-showcase{padding:24px}.bound-welcome-teasers{grid-template-columns:1fr}.bound-welcome-formside{padding:25px 22px}.bound-welcome-close{right:10px;top:10px}}
-`;document.head.appendChild(s)}
-
-async function discordSignup(){const{error}=await supabase.auth.signInWithOAuth({provider:'discord',options:{scopes:'identify guilds',redirectTo:`${location.origin}/dashboard.html#account`}});if(error)throw error}
-
-function closeModal(modal){modal.classList.remove('show');sessionStorage.setItem('bound_welcome_closed','1');setTimeout(()=>modal.remove(),250)}
-
-async function mount(){if(location.pathname&&!location.pathname.endsWith('/')&&!location.pathname.endsWith('/index.html'))return;const{data}=await supabase.auth.getSession();if(data.session)return;if(sessionStorage.getItem('bound_welcome_closed')==='1')return;style();
- const modal=document.createElement('div');modal.className='bound-welcome-auth';modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-label','Welcome to Bound');modal.innerHTML=`<div class="bound-welcome-shell"><button class="bound-welcome-close" id="boundWelcomeClose" aria-label="Continue to Bound website">×</button><section class="bound-welcome-showcase"><div class="bound-welcome-brand"><img src="bound-logo.png" alt=""><div><strong>Bound</strong><small>YOUR DISCORD IDENTITY EVERYWHERE</small></div></div><div class="bound-welcome-copy"><span class="bound-welcome-kicker">WELCOME TO BOUND</span><h2>More than a bot.<br><span>Your whole social layer.</span></h2><p>Sign in once and your profile progression relationships factions achievements and private server access stay connected to you.</p></div><div class="bound-welcome-teasers"><div class="bound-welcome-teaser"><small>BDSM PROFILE</small><b>XP that follows you</b><span>Levels gags bonds and achievements</span></div><div class="bound-welcome-teaser"><small>FACTIONS</small><b>Your community identity</b><span>Membership progression and economy</span></div><div class="bound-welcome-teaser"><small>BOUND SAFETY</small><b>Built into everything</b><span>Consent controls and support</span></div><div class="bound-welcome-teaser"><small>PRIVATE BUILDS</small><b>Make Bound yours</b><span>Tickets staff economy and automation</span></div></div><div class="bound-welcome-live"><i></i> Bound network online</div></section><section class="bound-welcome-formside"><div class="bound-auth-tabs"><button class="active" data-bound-auth="signin">SIGN IN</button><button data-bound-auth="signup">SIGN UP</button></div><div class="bound-auth-pane active" id="boundSigninPane"><h3>Welcome back</h3><p>Use your Bound username and password. No Discord approval needed again.</p><div class="bound-auth-field"><label>BOUND USERNAME</label><input id="boundWelcomeUsername" autocomplete="username" placeholder="Username"></div><div class="bound-auth-field"><label>PASSWORD</label><input id="boundWelcomePassword" type="password" autocomplete="current-password" placeholder="Password"></div><button class="bound-auth-main" id="boundWelcomeSignin">Enter Bound</button><button class="bound-auth-discord" id="boundWelcomeDiscordSignin">Continue with Discord</button><div class="bound-auth-message" id="boundWelcomeMessage"></div><button class="bound-auth-skip" data-close-welcome>Explore the website instead</button></div><div class="bound-auth-pane" id="boundSignupPane"><h3>Create your Bound account</h3><p>Link Discord once so Bound knows which profile and servers belong to you. Then choose your own Bound username and password in Account.</p><div class="bound-signup-points"><div class="bound-signup-point"><i>♡</i><div><b>Keep your identity</b><small>Your BDSM XP relationships and achievements stay linked</small></div></div><div class="bound-signup-point"><i>◎</i><div><b>Fast future logins</b><small>Use username and password instead of approving Discord every visit</small></div></div><div class="bound-signup-point"><i>✦</i><div><b>Unlock your dashboard</b><small>Factions account info and eligible private server controls</small></div></div></div><button class="bound-auth-discord" id="boundWelcomeSignup">Create account with Discord</button><p class="bound-auth-fineprint">Discord is used once to verify your UID. Your Bound password is handled securely by Supabase Auth.</p><button class="bound-auth-skip" data-close-welcome>Not now, show me Bound</button></div></section></div>`;document.body.appendChild(modal);requestAnimationFrame(()=>modal.classList.add('show'));
- modal.querySelectorAll('[data-bound-auth]').forEach(btn=>btn.addEventListener('click',()=>{modal.querySelectorAll('[data-bound-auth]').forEach(x=>x.classList.toggle('active',x===btn));modal.querySelectorAll('.bound-auth-pane').forEach(x=>x.classList.remove('active'));document.getElementById(btn.dataset.boundAuth==='signup'?'boundSignupPane':'boundSigninPane')?.classList.add('active')}));
- document.getElementById('boundWelcomeClose')?.addEventListener('click',()=>closeModal(modal));modal.querySelectorAll('[data-close-welcome]').forEach(x=>x.addEventListener('click',()=>closeModal(modal)));modal.addEventListener('click',e=>{if(e.target===modal)closeModal(modal)});document.addEventListener('keydown',function onKey(e){if(e.key==='Escape'){closeModal(modal);document.removeEventListener('keydown',onKey)}});
- const signin=async()=>{const u=document.getElementById('boundWelcomeUsername')?.value||'',p=document.getElementById('boundWelcomePassword')?.value||'',m=document.getElementById('boundWelcomeMessage'),b=document.getElementById('boundWelcomeSignin');if(!/^[a-zA-Z0-9_]{3,24}$/.test(u)){m.textContent='Enter your Bound username.';return}if(!p){m.textContent='Enter your password.';return}b.disabled=true;b.textContent='Signing in…';const{error}=await supabase.auth.signInWithPassword({email:internalEmail(u),password:p});if(error){m.textContent=error.message;b.disabled=false;b.textContent='Enter Bound';return}location.href='dashboard.html'};document.getElementById('boundWelcomeSignin')?.addEventListener('click',signin);document.getElementById('boundWelcomePassword')?.addEventListener('keydown',e=>{if(e.key==='Enter')signin()});
- document.getElementById('boundWelcomeDiscordSignin')?.addEventListener('click',()=>discordSignup().catch(e=>document.getElementById('boundWelcomeMessage').textContent=e.message));document.getElementById('boundWelcomeSignup')?.addEventListener('click',()=>discordSignup());
+// Deliberately plain: one logo, one line, one button. Password/username
+// accounts still exist (see account-ui.js inside the dashboard, under
+// Account) for people who want a faster return visit later - but the very
+// first thing a new visitor sees should be as simple as the tagline itself.
+function style() {
+  if (document.getElementById('boundWelcomeAuthStyle')) return;
+  const s = document.createElement('style');
+  s.id = 'boundWelcomeAuthStyle';
+  s.textContent = `
+.bound-welcome-auth{position:fixed;inset:0;z-index:99999;display:grid;place-items:center;padding:20px;background:rgba(5,4,7,.78);backdrop-filter:blur(18px);opacity:0;transition:opacity .24s ease}
+.bound-welcome-auth.show{opacity:1}
+.bound-welcome-card{width:min(420px,100%);text-align:center;position:relative;padding:44px 34px 34px;border:1px solid rgba(255,255,255,.1);border-radius:26px;background:linear-gradient(150deg,rgba(24,19,28,.99),rgba(10,8,13,.995));box-shadow:0 40px 120px rgba(0,0,0,.55)}
+.bound-welcome-close{position:absolute;right:14px;top:14px;width:34px;height:34px;border-radius:11px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.045);color:#a99fab;font-size:17px;cursor:pointer}
+.bound-welcome-close:hover{color:#fff;background:rgba(255,255,255,.08)}
+.bound-welcome-mark{width:54px;height:54px;border-radius:16px;margin:0 auto;object-fit:cover}
+.bound-welcome-card h2{font:700 clamp(26px,5vw,32px)/1.06 'Space Grotesk',Inter,sans-serif;margin:18px 0 10px;letter-spacing:-.02em}
+.bound-welcome-card h2 span{color:#f06cc3}
+.bound-welcome-card>p{color:#978c99;font-size:12px;line-height:1.65;margin:0 auto 26px;max-width:320px}
+.bound-auth-discord,.bound-auth-skip{width:100%;border-radius:12px;padding:13px;border:0;font:800 11px Inter,sans-serif;cursor:pointer}
+.bound-auth-discord{background:#5865f2;color:white;display:flex;align-items:center;justify-content:center;gap:9px}
+.bound-auth-discord:disabled{opacity:.6;cursor:wait}
+.bound-auth-skip{background:transparent;color:#776e7a;margin-top:11px}
+.bound-auth-message{min-height:16px;margin-top:12px;font-size:9px;color:#f4a2b3}
+.bound-welcome-live{display:flex;gap:7px;align-items:center;justify-content:center;margin-top:22px;color:#7cdca9;font-size:8px;font-weight:700}
+.bound-welcome-live i{width:6px;height:6px;border-radius:50%;background:#79e3ae;box-shadow:0 0 12px rgba(121,227,174,.75)}
+@media(max-width:480px){.bound-welcome-auth{padding:12px}.bound-welcome-card{padding:36px 22px 26px}}
+`;
+  document.head.appendChild(s);
 }
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
+
+async function discordSignin() {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'discord',
+    options: { scopes: 'identify guilds', redirectTo: `${location.origin}/dashboard.html` },
+  });
+  if (error) throw error;
+}
+
+function closeModal(modal) {
+  modal.classList.remove('show');
+  sessionStorage.setItem('bound_welcome_closed', '1');
+  setTimeout(() => modal.remove(), 250);
+}
+
+async function mount() {
+  if (location.pathname && !location.pathname.endsWith('/') && !location.pathname.endsWith('/index.html')) return;
+  const { data } = await supabase.auth.getSession();
+  if (data.session) return;
+  if (sessionStorage.getItem('bound_welcome_closed') === '1') return;
+  style();
+
+  const modal = document.createElement('div');
+  modal.className = 'bound-welcome-auth';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'Welcome to Bound');
+  modal.innerHTML = `<div class="bound-welcome-card">
+    <button class="bound-welcome-close" id="boundWelcomeClose" aria-label="Continue to Bound website">×</button>
+    <img class="bound-welcome-mark" src="bound-logo.png" alt="Bound">
+    <h2>Discord, <span>but closer.</span></h2>
+    <p>Sign in with Discord to bring your profile, relationships and server access with you.</p>
+    <button class="bound-auth-discord" id="boundWelcomeSignin">Continue with Discord</button>
+    <div class="bound-auth-message" id="boundWelcomeMessage"></div>
+    <button class="bound-auth-skip" data-close-welcome>Explore the website first</button>
+    <div class="bound-welcome-live"><i></i> Bound network online</div>
+  </div>`;
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('show'));
+
+  document.getElementById('boundWelcomeClose')?.addEventListener('click', () => closeModal(modal));
+  modal.querySelectorAll('[data-close-welcome]').forEach(x => x.addEventListener('click', () => closeModal(modal)));
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(modal); });
+  document.addEventListener('keydown', function onKey(e) {
+    if (e.key === 'Escape') { closeModal(modal); document.removeEventListener('keydown', onKey); }
+  });
+
+  document.getElementById('boundWelcomeSignin')?.addEventListener('click', async () => {
+    const btn = document.getElementById('boundWelcomeSignin');
+    const msg = document.getElementById('boundWelcomeMessage');
+    btn.disabled = true;
+    btn.textContent = 'Opening Discord…';
+    try {
+      await discordSignin();
+    } catch (error) {
+      btn.disabled = false;
+      btn.textContent = 'Continue with Discord';
+      if (msg) msg.textContent = error?.message || 'Could not start Discord sign-in.';
+    }
+  });
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
+else mount();
