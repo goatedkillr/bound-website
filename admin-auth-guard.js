@@ -1,0 +1,31 @@
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/+esm';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './dashboard-config.js';
+
+const supabase=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+const MAX_AGE=30*60*1000;
+const ADMIN_VIEWS=new Set(['servers','safety','tickets','economy','staff','logs','settings','private']);
+const STAMP_KEY='bound_discord_admin_verified_at';
+const TOKEN_KEYS=['bound_discord_provider_token','bound_discord_provider_token_backup'];
+
+function providerToken(){return sessionStorage.getItem(TOKEN_KEYS[0])||localStorage.getItem(TOKEN_KEYS[1])||''}
+function verifiedAt(){return Number(localStorage.getItem(STAMP_KEY)||0)}
+function isFresh(){const stamp=verifiedAt();return Boolean(providerToken()&&stamp&&Date.now()-stamp<MAX_AGE)}
+function ageText(){const stamp=verifiedAt();if(!stamp)return'Not verified this session';const mins=Math.max(1,Math.floor((Date.now()-stamp)/60000));return mins<60?`${mins}m ago`:`${Math.floor(mins/60)}h ago`}
+
+function ensureStyle(){if(document.getElementById('boundAdminGuardStyle'))return;const s=document.createElement('style');s.id='boundAdminGuardStyle';s.textContent=`.bound-admin-guard{position:fixed;inset:0;z-index:100000;display:grid;place-items:center;padding:18px;background:rgba(5,4,7,.78);backdrop-filter:blur(16px)}.bound-admin-guard[hidden]{display:none}.bound-admin-guard-card{width:min(470px,100%);border:1px solid rgba(255,255,255,.1);border-radius:22px;background:linear-gradient(145deg,#17121b,#0c090f);box-shadow:0 30px 100px rgba(0,0,0,.5);padding:24px}.bound-admin-guard-badge{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border-radius:999px;background:rgba(240,108,195,.1);color:#efacd6;font:800 8px Inter,sans-serif;letter-spacing:.1em}.bound-admin-guard h3{font:700 27px 'Space Grotesk',Inter,sans-serif;margin:13px 0 8px}.bound-admin-guard p{color:#918693;font:400 10px/1.65 Inter,sans-serif}.bound-admin-guard-info{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0}.bound-admin-guard-info div{padding:12px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.055)}.bound-admin-guard-info small{display:block;color:#756c78;font-size:7px;letter-spacing:.1em}.bound-admin-guard-info b{display:block;margin-top:5px;font-size:10px}.bound-admin-guard-actions{display:flex;gap:8px}.bound-admin-guard button{border:0;border-radius:11px;padding:11px 14px;font:800 9px Inter,sans-serif;cursor:pointer}.bound-admin-refresh{flex:1;background:linear-gradient(135deg,#f06cc3,#b649a2);color:#180c15}.bound-admin-cancel{background:rgba(255,255,255,.05);color:#ddd3df;border:1px solid rgba(255,255,255,.08)!important}.bound-admin-fresh{display:inline-flex;align-items:center;gap:6px;font-size:8px;color:#79e3ae}.bound-admin-fresh i{width:6px;height:6px;border-radius:50%;background:#79e3ae}@media(max-width:520px){.bound-admin-guard-info{grid-template-columns:1fr}.bound-admin-guard-actions{flex-direction:column}}`;document.head.appendChild(s)}
+
+function ensureModal(){ensureStyle();let m=document.getElementById('boundAdminGuard');if(m)return m;m=document.createElement('div');m.id='boundAdminGuard';m.className='bound-admin-guard';m.hidden=true;m.innerHTML=`<div class="bound-admin-guard-card"><span class="bound-admin-guard-badge">ADMIN PROTECTION</span><h3>Refresh Discord to continue</h3><p>Server administration uses a fresh Discord permission check. Your Bound account stays signed in, but admin tools require Discord to confirm you still own or administer this server.</p><div class="bound-admin-guard-info"><div><small>BOUND ACCOUNT</small><b>Still signed in</b></div><div><small>LAST ADMIN CHECK</small><b id="boundAdminAge">Not verified</b></div></div><div class="bound-admin-guard-actions"><button class="bound-admin-refresh" id="boundAdminRefresh">Refresh with Discord</button><button class="bound-admin-cancel" id="boundAdminCancel">Not now</button></div></div>`;document.body.appendChild(m);document.getElementById('boundAdminCancel')?.addEventListener('click',()=>m.hidden=true);m.addEventListener('click',e=>{if(e.target===m)m.hidden=true});document.getElementById('boundAdminRefresh')?.addEventListener('click',refreshDiscord);return m}
+
+async function refreshDiscord(){const btn=document.getElementById('boundAdminRefresh');if(btn){btn.disabled=true;btn.textContent='Opening Discord…'}try{const{error}=await supabase.auth.signInWithOAuth({provider:'discord',options:{scopes:'identify guilds',redirectTo:`${location.origin}/dashboard.html`}});if(error)throw error}catch(e){if(btn){btn.disabled=false;btn.textContent='Refresh with Discord'}const p=document.querySelector('#boundAdminGuard p');if(p)p.textContent=e?.message||'Could not start Discord verification.'}}
+
+function prompt(){const m=ensureModal();const age=document.getElementById('boundAdminAge');if(age)age.textContent=ageText();m.hidden=false}
+function targetAdminView(target){const nav=target?.closest?.('.nav-item[data-view]');if(nav&&ADMIN_VIEWS.has(nav.dataset.view))return true;const jump=target?.closest?.('[data-jump]');if(jump&&ADMIN_VIEWS.has(jump.dataset.jump))return true;return false}
+function isAdminMutation(target){return Boolean(target?.closest?.('#saveGagConfig,.switch[data-group],#savePrivateControl,#saveTicketConfig,[data-admin-action],[data-private-action]'))}
+
+document.addEventListener('click',e=>{if(isFresh())return;if(targetAdminView(e.target)||isAdminMutation(e.target)){e.preventDefault();e.stopImmediatePropagation();prompt()}},true);
+
+window.boundRequireFreshAdminAuth=()=>{if(isFresh())return true;prompt();return false};
+window.boundAdminAuthFresh=isFresh;
+
+const badge=()=>{const host=document.querySelector('.topbar-actions');if(!host||document.getElementById('boundAdminFresh'))return;const el=document.createElement('span');el.id='boundAdminFresh';el.className='bound-admin-fresh';el.innerHTML='<i></i><span>Admin verified</span>';host.prepend(el);const sync=()=>{el.style.display=isFresh()?'inline-flex':'none'};sync();setInterval(sync,60000)};
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',badge);else badge();
