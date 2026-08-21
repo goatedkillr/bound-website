@@ -21,7 +21,7 @@
     const headers={Authorization:`Bearer ${access}`};
     const provider=providerToken();
     if(provider)headers['X-Discord-Provider-Token']=provider;
-    const url=id?`/api/ticket-preview?guild_id=${encodeURIComponent(id)}`:'/api/ticket-preview';
+    const url=id?`/api/tickets?mode=preview&guild_id=${encodeURIComponent(id)}`:'/api/tickets?mode=preview';
     const r=await fetch(url,{headers});
     const d=await r.json().catch(()=>({}));
     if(!r.ok){const e=new Error(d.error||`Ticket preview failed (${r.status})`);e.status=r.status;throw e;}
@@ -32,7 +32,7 @@
     const id=guildId(),access=authToken(),provider=providerToken();
     if(!id||!access)throw new Error('Choose a server and sign in first');
     if(!provider)throw new Error('Refresh Discord before changing ticket settings');
-    const r=await fetch(`/api/ticket-config?guild_id=${encodeURIComponent(id)}`,{method,headers:{Authorization:`Bearer ${access}`,'X-Discord-Provider-Token':provider,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+    const r=await fetch(`/api/tickets?mode=config&guild_id=${encodeURIComponent(id)}`,{method,headers:{Authorization:`Bearer ${access}`,'X-Discord-Provider-Token':provider,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
     const d=await r.json().catch(()=>({}));
     if(!r.ok){const e=new Error(d.error||`Ticket settings failed (${r.status})`);e.status=r.status;throw e;}
     return d;
