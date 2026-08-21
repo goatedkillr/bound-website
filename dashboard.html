@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta name="description" content="Bound dashboard for community safety factions staff and private server systems" />
+  <meta name="theme-color" content="#120d14" />
   <title>Bound Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,10 +16,13 @@
   <link rel="stylesheet" href="dashboard-finish.css" />
   <link rel="stylesheet" href="private-controls.css" />
   <link rel="stylesheet" href="ticket-controls.css" />
+  <link rel="stylesheet" href="accessibility.css" />
+  <link rel="stylesheet" href="mobile-dashboard.css" />
 </head>
-<body>
+<body><a class="skip-link" href="#dashboard-content">Skip to dashboard content</a>
   <div class="app-shell">
     <aside class="sidebar" id="sidebar">
+      <button class="sidebar-close" id="sidebarCloseBtn" type="button" aria-label="Close dashboard menu">×</button>
       <a class="dash-brand" href="index.html" aria-label="Bound home"><span class="logo"><img src="bound-logo.png" alt="Bound logo"></span><div><strong>Bound</strong><small>CONTROL CENTRE</small></div></a>
       <div class="server-card" id="serverCard"><span class="server-icon" id="serverIcon">B</span><div class="server-copy"><small>ACTIVE SERVER</small><strong id="serverName">Choose a server</strong></div><button class="icon-btn" id="serverPickerBtn" aria-label="Choose server">⌄</button></div>
       <div class="server-picker" id="serverPicker" hidden></div>
@@ -29,8 +33,9 @@
       </nav>
       <div class="sidebar-bottom"><a href="index.html" class="support-link">← Back to Bound</a><div class="user-chip" id="userChip"><div class="user-avatar" id="userAvatar">?</div><div><strong id="userName">Not signed in</strong><small id="userRole">Discord account</small></div><button class="icon-btn" id="logoutBtn" title="Sign out">↪</button></div></div>
     </aside>
-    <main class="dashboard-main">
-      <header class="topbar"><div class="topbar-left"><button class="menu-btn" id="menuBtn">☰</button><div><small>BOUND / CONTROL CENTRE</small><h1 id="pageTitle">Overview</h1></div></div><div class="topbar-actions"><button class="status-pill"><i></i> Bound Online</button><a class="top-btn" href="https://discord.gg/NVseqMDNRd" target="_blank" rel="noopener noreferrer">Support</a><button class="notification" id="loginBtn">Discord Login</button></div></header>
+    <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="Close dashboard menu" tabindex="-1"></button>
+    <main class="dashboard-main" id="dashboard-content">
+      <header class="topbar"><div class="topbar-left"><button class="menu-btn" id="menuBtn" type="button" aria-label="Open dashboard menu" aria-expanded="false" aria-controls="sidebar"><span aria-hidden="true">☰</span></button><div class="topbar-title"><small>BOUND CONTROL CENTRE</small><h1 id="pageTitle">Overview</h1></div></div><div class="topbar-actions"><button class="status-pill" type="button"><i></i> Bound Online</button><a class="top-btn" href="https://discord.gg/NVseqMDNRd" target="_blank" rel="noopener noreferrer">Support</a><button class="notification" id="loginBtn" type="button">Discord Login</button></div></header>
       <div class="dashboard-content">
         <section class="view active" id="view-overview">
           <div class="welcome-card"><div class="welcome-copy"><span class="eyebrow">WELCOME BACK</span><h2>Your server is <span>fully Bound.</span></h2><p>See what is happening manage your systems and keep your community running from one place</p><div class="welcome-actions"><button class="primary-action" data-jump="settings">Configure server</button><button class="ghost-action" data-jump="logs">View activity</button></div></div><div class="health-orb"><div class="orb-ring ring-a"></div><div class="orb-ring ring-b"></div><div class="health-core"><b>99.9%</b><small>HEALTH</small></div></div></div>
@@ -55,3 +60,4 @@
   <script src="ticket-controls.js"></script>
 </body>
 </html>
+

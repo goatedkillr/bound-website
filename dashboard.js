@@ -7,7 +7,6 @@ const generic={
  servers:['Servers','Choose a Discord server you own or can manage.',[['◇','Managed servers','Only servers Discord says you can manage appear'],['◇','Faction approval','Each approved Discord server becomes its own faction'],['＋','Add a server','Use the Add Bound link on the main site']]],
  moderation:['Moderation','Live moderation actions remain Discord-side for safety.',[['⌁','Actions','Ban, mute, jail and user information'],['◆','Containment','Cage and safeword workflows'],['≣','History','Auditable moderation actions']]],
  tickets:['Tickets & Support','Ticket management remains primarily Discord-side.',[['▱','Tickets','Support and verification workflows'],['★','Ratings','Post-close staff feedback'],['♙','Staff stats','Claims, closes and ratings']]],
- staff:['Staff','Staff actions remain Discord-side until dedicated dashboard permission tables are added.',[['♙','Clocking','Active staff shifts'],['◷','Breaks','Approved staff breaks'],['◇','Assignments','Roles and temporary duties']]],
  roleplay:['Social & RP','Ownership, gagging and social systems share the same Supabase backend.',[['♡','Interactions','Hug, kiss, bite, cuddle and more'],['◉','Ownership','Claims, owners and subs'],['◇','Gag system','Consent-based gag controls']]],
  logs:['Audit Log','Recent activity is loaded on Overview. Full audit search is the next dashboard module.',[['≣','Moderation','Actions and reasons'],['₦','Factions','Nugs and faction activity'],['◆','Safety','Protected review history']]],
 };
@@ -23,11 +22,16 @@ function toast(title='Saved',message='Your changes were saved.'){const t=$('toas
 function setLoading(btn,on,label='Loading…'){if(!btn)return;if(on){btn.dataset.oldLabel=btn.textContent;btn.textContent=label;btn.disabled=true}else{btn.textContent=btn.dataset.oldLabel||btn.textContent;btn.disabled=false}}
 function setSwitchState(btn,state){if(!btn)return;btn.classList.toggle('on',!!state);btn.setAttribute('aria-pressed',String(!!state));}
 
-function buildGeneric(key){const v=generic[key],el=$(`view-${key}`);if(!v||!el||el.dataset.ready)return;el.innerHTML=`<div class="generic-card"><span class="eyebrow">BOUND CONTROL CENTRE</span><h2>${escapeHtml(v[0])}</h2><p>${escapeHtml(v[1])}</p><div class="generic-feature-grid">${v[2].map(f=>`<div class="generic-feature"><span>${f[0]}</span><b>${escapeHtml(f[1])}</b><small>${escapeHtml(f[2])}</small></div>`).join('')}</div></div>`;el.dataset.ready='1';}
-function showView(key){if(generic[key])buildGeneric(key);document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));$(`view-${key}`)?.classList.add('active');document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));if($('pageTitle'))$('pageTitle').textContent=pages[key]||'Dashboard';$('sidebar')?.classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});}
+function buildGeneric(key){const v=generic[key],el=$(`view-${key}`);if(!v||!el||el.dataset.ready||el.dataset.finished==='1')return;el.innerHTML=`<div class="generic-card"><span class="eyebrow">BOUND CONTROL CENTRE</span><h2>${escapeHtml(v[0])}</h2><p>${escapeHtml(v[1])}</p><div class="generic-feature-grid">${v[2].map(f=>`<div class="generic-feature"><span>${f[0]}</span><b>${escapeHtml(f[1])}</b><small>${escapeHtml(f[2])}</small></div>`).join('')}</div></div>`;el.dataset.ready='1';}
+function setSidebarOpen(open){const sidebar=$('sidebar'),menu=$('menuBtn'),backdrop=$('sidebarBackdrop');sidebar?.classList.toggle('open',open);backdrop?.classList.toggle('open',open);document.body.classList.toggle('sidebar-open',open);menu?.classList.toggle('is-open',open);menu?.setAttribute('aria-expanded',String(open));if(menu){menu.setAttribute('aria-label',open?'Close dashboard menu':'Open dashboard menu');const icon=menu.querySelector('span');if(icon)icon.textContent=open?'×':'☰';}}
+function showView(key){if(generic[key])buildGeneric(key);document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));$(`view-${key}`)?.classList.add('active');document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));if($('pageTitle'))$('pageTitle').textContent=pages[key]||'Dashboard';setSidebarOpen(false);window.scrollTo({top:0,behavior:'smooth'});}
 document.querySelectorAll('.nav-item').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
 document.querySelectorAll('[data-jump]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.jump)));
-$('menuBtn')?.addEventListener('click',()=>$('sidebar')?.classList.toggle('open'));
+$('menuBtn')?.addEventListener('click',()=>setSidebarOpen(!$('sidebar')?.classList.contains('open')));
+$('sidebarCloseBtn')?.addEventListener('click',()=>setSidebarOpen(false));
+$('sidebarBackdrop')?.addEventListener('click',()=>setSidebarOpen(false));
+document.addEventListener('keydown',event=>{if(event.key==='Escape')setSidebarOpen(false)});
+window.matchMedia('(min-width: 761px)').addEventListener('change',event=>{if(event.matches)setSidebarOpen(false)});
 if($('uptimeBars'))$('uptimeBars').innerHTML=Array.from({length:36},()=>'<i></i>').join('');
 
 async function signInWithDiscord(){try{setLoading($('authDiscordBtn'),true,'Opening Discord…');const{error}=await supabase.auth.signInWithOAuth({provider:'discord',options:{scopes:'identify guilds',redirectTo:`${location.origin}/dashboard.html`}});if(error)throw error}catch(e){toast('Discord login failed',e.message||'Could not start login.');setLoading($('authDiscordBtn'),false)}}
@@ -159,3 +163,4 @@ supabase.auth.onAuthStateChange((event,newSession)=>{
  }
  renderSignedOut();
 })();
+
