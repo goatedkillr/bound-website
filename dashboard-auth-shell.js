@@ -1,4 +1,4 @@
-import { supabase, getStoredProviderToken, ensureFreshProviderToken } from './supabase-client.js';
+import { supabase, authReady, getStoredProviderToken, ensureFreshProviderToken } from './supabase-client.js';
 
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -23,5 +23,6 @@ function openAccountWhenReady(){let tries=0;const t=setInterval(()=>{tries++;con
 async function showAccountOnly(session){document.body.classList.add('account-only');const gate=$('authGate');if(gate)gate.classList.add('hidden');const summary=await accountSummary(session);const name=summary?.account?.username||session.user?.user_metadata?.full_name||session.user?.user_metadata?.user_name||'Bound user';if($('userName'))$('userName').textContent=name;if($('userRole'))$('userRole').textContent='Bound account';if($('loginBtn')){$('loginBtn').textContent='Refresh Discord';$('loginBtn').onclick=e=>{e.preventDefault();discordOAuth().catch(()=>{})}}if($('serverName'))$('serverName').textContent='Admin refresh required';const content=document.querySelector('.dashboard-content');if(content&&!$('boundAccountMode')){const banner=document.createElement('div');banner.id='boundAccountMode';banner.className='bound-account-mode';banner.innerHTML=`<div><b>Signed in with your Bound account</b><small>Your personal profile and account stay available. Refresh Discord only when you want to manage a server or use admin controls.</small></div><button id="boundAccountRefreshDiscord">Refresh Discord</button>`;content.prepend(banner);$('boundAccountRefreshDiscord')?.addEventListener('click',()=>discordOAuth().catch(()=>{}))}openAccountWhenReady();
  const observer=new MutationObserver(()=>{if(getStoredProviderToken()){observer.disconnect();document.body.classList.remove('account-only');$('boundAccountMode')?.remove();return}if($('authGate')&&!$('authGate').classList.contains('hidden'))$('authGate').classList.add('hidden')});if(gate)observer.observe(gate,{attributes:true,attributeFilter:['class']})}
 
-async function boot(){injectStyle();enhanceSignedOutGate();const{data}=await supabase.auth.getSession();const session=data.session;if(!session)return;const token=await ensureFreshProviderToken({maxAgeMs:30*60*1000});if(token)return;await showAccountOnly(session)}
+async function boot(){injectStyle();enhanceSignedOutGate();let session=null;try{session=await authReady}catch{return}if(!session)return;const token=await ensureFreshProviderToken({maxAgeMs:30*60*1000});if(token)return;await showAccountOnly(session)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
+
