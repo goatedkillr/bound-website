@@ -1,0 +1,63 @@
+const SUPABASE_URL=process.env.SUPABASE_URL||'https://hpbqoochibnrxzxeuazb.supabase.co';
+const PUBLISHABLE=process.env.SUPABASE_PUBLISHABLE_KEY||'sb_publishable_CQPZKB4Houc0UPn-sccxOQ_uZTD-X37';
+const SERVICE=process.env.SUPABASE_SERVICE_ROLE_KEY;
+const USERNAME=/^[a-zA-Z0-9_]{3,24}$/;
+const SNOWFLAKE=/^\d{15,25}$/;
+
+function headers(res){res.setHeader('Cache-Control','no-store, max-age=0');res.setHeader('Pragma','no-cache');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');}
+function send(res,status,body){headers(res);return res.status(status).json(body)}
+function bearer(req){const v=String(req.headers.authorization||'');return v.startsWith('Bearer ')?v.slice(7):null}
+async function fetchJson(url,opts={}){const r=await fetch(url,opts);const t=await r.text();let d=null;try{d=t?JSON.parse(t):null}catch{d=t}if(!r.ok){const e=new Error(d?.message||d?.error_description||d?.error||`Request failed (${r.status})`);e.status=r.status;throw e}return d}
+async function authUser(token){if(!token)return null;try{return await fetchJson(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:PUBLISHABLE,Authorization:`Bearer ${token}`}})}catch{return null}}
+function metaDiscordId(u){return String(u?.user_metadata?.provider_id||u?.user_metadata?.sub||u?.identities?.find?.(x=>x.provider==='discord')?.identity_data?.sub||'')}
+async function rest(path,{method='GET',body,prefer='return=representation'}={}){if(!SERVICE)throw new Error('SUPABASE_SERVICE_ROLE_KEY is missing.');return fetchJson(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{apikey:SERVICE,Authorization:`Bearer ${SERVICE}`,'Content-Type':'application/json',Prefer:prefer},body:body?JSON.stringify(body):undefined})}
+async function accountFor(user){const rows=await rest(`dashboard_accounts?select=*&auth_user_id=eq.${encodeURIComponent(user.id)}&limit=1`);return rows?.[0]||null}
+async function resolveDiscordId(user,account){const id=String(account?.discord_user_id||metaDiscordId(user)||'');return SNOWFLAKE.test(id)?id:null}
+async function updateAuthUser(id,body){return fetchJson(`${SUPABASE_URL}/auth/v1/admin/users/${id}`,{method:'PUT',headers:{apikey:SERVICE,Authorization:`Bearer ${SERVICE}`,'Content-Type':'application/json'},body:JSON.stringify(body)})}
+function normUsername(v){return String(v||'').trim().toLowerCase()}
+function duration(s){s=Number(s||0);const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);return [d&&`${d}d`,h&&`${h}h`,m&&`${m}m`].filter(Boolean).join(' ')||`${s}s`}
+function achievement(name,description,current,target,unit){const unlocked=Number(current)>=target;return{name,description,current:Number(current||0),target,unit:unit||null,unlocked,progress:Math.min(100,Math.floor((Number(current||0)/target)*100))}}
+async function bdsmData(uid){
+ const [pRows,gRows,oRows,sRows,rpRows]=await Promise.all([
+  rest(`ownership_profiles?select=user_id,username,display_name,avatar_url,role_preference,subscription_tier,bdsm_level,bdsm_xp,bdsm_lifetime_xp&user_id=eq.${uid}&limit=1`),
+  rest(`bdsm_gag_user_stats?select=*&user_id=eq.${uid}&limit=1`),
+  rest(`ownership_relationships?select=owner_id,sub_id,bond_xp,status,created_at&sub_id=eq.${uid}`),
+  rest(`ownership_relationships?select=owner_id,sub_id,bond_xp,status,created_at&owner_id=eq.${uid}`),
+  rest(`rp_action_counts?select=action,actor_user_id,target_user_id,count&or=(actor_user_id.eq.${uid},target_user_id.eq.${uid})`),
+ ]);
+ const p=pRows?.[0]||{},g=gRows?.[0]||{};
+ const owners=(oRows||[]).filter(x=>x.owner_id&&x.owner_id!==uid),subs=(sRows||[]).filter(x=>x.sub_id&&x.sub_id!==uid);
+ const bonds=[...owners,...subs].map(x=>Number(x.bond_xp||0));
+ const totalBond=bonds.reduce((a,b)=>a+b,0),highestBond=bonds.length?Math.max(...bonds):0;
+ const gagTimes=Number(g.total_times_gagged||0),gagMessages=Number(g.total_messages_converted||0),totalGagSeconds=Number(g.total_gag_seconds||0),longestGagSeconds=Number(g.longest_gag_seconds||0);
+ const achievements=[
+  achievement('First Gag','get gagged for the first time',gagTimes,1),achievement('Getting Used To It','get gagged 10 times',gagTimes,10),achievement('Gag Regular','get gagged 50 times',gagTimes,50),achievement('Mmph','have 25 messages changed while gagged',gagMessages,25),achievement('Quiet One','have 100 messages changed while gagged',gagMessages,100),achievement('Timed Gag','complete a gag lasting at least 5 minutes',longestGagSeconds,300,'time'),achievement('Long Session','complete a gag lasting at least 1 hour',longestGagSeconds,3600,'time'),achievement('Time Served','spend 24 hours gagged in total',totalGagSeconds,86400,'time'),achievement('Owned','have your first owner',owners.length,1),achievement('Owner','claim your first sub',subs.length,1),achievement('Bound Together','reach 1000 bond xp across your relationships',totalBond,1000),achievement('Strong Bond','reach 5000 bond xp with one relationship',highestBond,5000)
+ ];
+ const rp={};for(const row of rpRows||[]){rp[row.action]=(rp[row.action]||0)+Number(row.count||0)}
+ return{profile:{user_id:uid,display_name:p.display_name||p.username||uid,username:p.username||uid,avatar_url:p.avatar_url||null,role_preference:p.role_preference||'unspecified',subscription_tier:p.subscription_tier||'free',bdsm_level:Number(p.bdsm_level||1),bdsm_xp:Number(p.bdsm_xp||0),bdsm_lifetime_xp:Number(p.bdsm_lifetime_xp||0)},stats:{owners:owners.length,subs:subs.length,total_bond:totalBond,highest_bond:highestBond,gag_times:gagTimes,gag_messages:gagMessages,total_gag_seconds:totalGagSeconds,longest_gag_seconds:longestGagSeconds,total_gag_time:duration(totalGagSeconds),longest_gag_time:duration(longestGagSeconds),rp_total:Object.values(rp).reduce((a,b)=>a+b,0),rp},achievements,achievement_summary:{unlocked:achievements.filter(x=>x.unlocked).length,total:achievements.length,completion:Math.floor((achievements.filter(x=>x.unlocked).length/achievements.length)*100)}}
+}
+
+export default async function handler(req,res){
+ try{
+  headers(res);if(!SERVICE)return send(res,500,{error:'Server auth is not configured.'});
+  const user=await authUser(bearer(req));if(!user)return send(res,401,{error:'Sign in first.'});
+  const action=String(req.query.action||'me');const account=await accountFor(user);const uid=await resolveDiscordId(user,account);
+  if(action==='me'&&req.method==='GET')return send(res,200,{account:account?{username:account.username,discord_user_id:account.discord_user_id,created_at:account.created_at,last_login_at:account.last_login_at}:null,discord_connected:Boolean(uid),discord_user_id:uid});
+  if(action==='bdsm'&&req.method==='GET'){if(!uid)return send(res,409,{error:'Connect Discord once so Bound can link your account data.'});return send(res,200,await bdsmData(uid))}
+  if(action==='credentials'&&req.method==='POST'){
+   if(!uid)return send(res,409,{error:'Connect Discord first so this login is attached to your Bound user ID.'});
+   const username=String(req.body?.username||'').trim(),normalized=normUsername(username),password=String(req.body?.password||'');
+   if(!USERNAME.test(username))return send(res,400,{error:'Username must be 3–24 letters, numbers or underscores.'});
+   if(password.length<8||password.length>128)return send(res,400,{error:'Password must be 8–128 characters.'});
+   const clashes=await rest(`dashboard_accounts?select=auth_user_id&username_normalized=eq.${encodeURIComponent(normalized)}&limit=1`);if(clashes?.length&&clashes[0].auth_user_id!==user.id)return send(res,409,{error:'That Bound username is already taken.'});
+   const internalEmail=`${normalized}@login.bound.bot`;
+   await updateAuthUser(user.id,{email:internalEmail,password,email_confirm:true,user_metadata:{...(user.user_metadata||{}),bound_username:username,provider_id:uid}});
+   const rows=await rest('dashboard_accounts',{method:'POST',prefer:'resolution=merge-duplicates,return=representation',body:{auth_user_id:user.id,username,username_normalized:normalized,discord_user_id:uid,updated_at:new Date().toISOString(),last_login_at:new Date().toISOString()}});
+   return send(res,200,{ok:true,account:rows?.[0]||{username,discord_user_id:uid}})
+  }
+  if(action==='password'&&req.method==='PATCH'){
+   if(!account)return send(res,409,{error:'Create your Bound username and password first.'});const password=String(req.body?.password||'');if(password.length<8||password.length>128)return send(res,400,{error:'Password must be 8–128 characters.'});await updateAuthUser(user.id,{password});return send(res,200,{ok:true})
+  }
+  return send(res,405,{error:'Unsupported account action.'});
+ }catch(e){console.error('Bound account API:',e);return send(res,e.status&&e.status<500?e.status:500,{error:e.message||'Account request failed.'})}
+}
