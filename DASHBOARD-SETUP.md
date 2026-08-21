@@ -51,7 +51,7 @@ After adding or changing environment variables in Vercel, redeploy the latest de
 3. Discord should request `identify` and `guilds` access.
 4. The dashboard should show only servers where the logged-in user has **Manage Server**, **Administrator**, or owns the guild.
 5. Servers found in `bound_guild_activation` appear as Bound-installed.
-6. Choose a Bound server. Overview, safety counts, active cages/gags, verification state and global Nugs circulation will load from Supabase.
+6. Choose a Bound server. Overview, safety counts, active cages/gags, verification state and global Bonds circulation will load from Supabase.
 7. Go to **Server Settings**, change the command prefix, and save. This writes to the existing `guild_settings.prefix` row.
 8. Run a prefix command in Discord to confirm the bot reads the same row.
 
@@ -65,7 +65,7 @@ After adding or changing environment variables in Vercel, redeploy the latest de
 - Safety config/cases from `safety_guilds` + `safety_cases`
 - Active cage counts from `ownership_cages`
 - Active guild gag counts from `bdsm_active_gags`
-- Global Nugs circulation from `user_balances`
+- Global Bonds circulation from `user_balances`
 - Recent guild game activity from `game_activity_history`
 
 ## Deliberately not writable yet

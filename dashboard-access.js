@@ -6,7 +6,7 @@
     ['safety','Safety and Consent','◆'],
     ['moderation','Moderation','⌁'],
     ['tickets','Tickets and Support','▱'],
-    ['economy','Factions','₦'],
+    ['economy','Factions','⛓'],
     ['staff','Staff','♙'],
     ['roleplay','Social and RP','♡'],
     ['logs','Audit Log','≣'],
