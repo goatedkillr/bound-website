@@ -7,6 +7,7 @@ const pages = ['index.html', 'dashboard.html'];
 const scripts = [
   'account-ui.js', 'admin-auth-guard.js', 'auth-bridge.js', 'dashboard-access.js',
   'dashboard-auth-shell.js', 'dashboard-config.js', 'dashboard-finish.js',
+  'faction-control.js',
   'dashboard-polish.js', 'dashboard-runtime.js', 'dashboard.js', 'private-controls.js',
   'private-dashboard.js', 'reach.js', 'safety-live.js', 'script.js', 'showcase.js',
   'supabase-client.js', 'ticket-controls.js', 'welcome-auth.js',
