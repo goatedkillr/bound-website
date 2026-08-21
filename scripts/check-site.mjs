@@ -42,6 +42,7 @@ for (const page of pages) {
 
 const dashboardRuntime = await readFile(resolve(root, 'dashboard-runtime.js'), 'utf8');
 if (/dashboard-auth-shell\\.js/.test(dashboardRuntime)) errors.push('dashboard-runtime.js: must not load a second dashboard auth controller');
+if (/admin-auth-guard\\.js/.test(dashboardRuntime)) errors.push('dashboard-runtime.js: must not load a second admin OAuth gate');
 const dashboardSource = await readFile(resolve(root, 'dashboard.js'), 'utf8');
 if ((dashboardSource.match(/signInWithOAuth/g) || []).length !== 1) errors.push('dashboard.js: Discord OAuth must have exactly one owner');
 if (!dashboardSource.includes("bound_discord_oauth_started_at")) errors.push('dashboard.js: missing duplicate OAuth-start guard');
