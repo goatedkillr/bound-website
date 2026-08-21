@@ -1,4 +1,7 @@
 {
+  "rewrites": [
+    { "source": "/kofi", "destination": "/api/kofi-webhook" }
+  ],
   "headers": [
     {
       "source": "/(.*)",
@@ -13,6 +16,12 @@
     },
     {
       "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, max-age=0" }
+      ]
+    },
+    {
+      "source": "/kofi",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, max-age=0" }
       ]
