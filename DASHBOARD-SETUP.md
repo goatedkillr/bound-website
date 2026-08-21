@@ -7,6 +7,7 @@ The dashboard is now coded to use the existing **React-api** Supabase project an
 In Vercel open **bound-website → Settings → Environment Variables** and add:
 
 - `SUPABASE_SERVICE_ROLE_KEY` = the service-role/secret key from the React-api Supabase project.
+- `DISCORD_BOT_TOKEN` = the Bound bot token. This is optional for dashboard access, but required for the one-time global-currency reward receipt DM. Keep it server-side only.
 
 Optionally also add `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`; the project already contains safe fallback values for those two.
 
@@ -72,3 +73,4 @@ After adding or changing environment variables in Vercel, redeploy the latest de
 The old dashboard UI displayed demo controls for economy enabled, starting wallet, daily reward, level system, log channel and timezone. Those columns do not exist in the current `guild_settings` schema. They are now disabled instead of pretending a save worked.
 
 The next database/dashboard pass should add dedicated configuration tables/columns for those features and update the bot to consume them.
+
