@@ -1,2 +1,19 @@
-1ëa¡Ñ1qêmŠ‰ËŠw¶µìm áb•ä^iÐ%•7±·¥r‰žjëaŽÄ^¦VœyÈZ¯]þp&§ž‹\¢{Þ®Ö«‚éžžÚ%t(Z¯­†ö¥¹çè­©•§¶‹r¥ä²²×¦
-«	©ç¢×(ž÷«¶ö¥¹ëh·*^K+-z`¡j±+®ŠÒ¶¸§‚k¬µ·žÅ§-—*'yÈZ­§-z¹hž¶"{èq«b¢q1qêmŠ‰ËŠw¶r«×@¨ž÷«µ:jÇºá+kŠx{DÊŠxL_zÐrµëÅÇ©¶*'q©eŠxzÐrµë0ŠØuj¸.™éí±V¥¹çžz-méî–SÚ­©žµêÜ…ªì
+import { supabase } from './supabase-client.js';
+
+// Make the homepage feel like a returning dashboard rather than a fresh login.
+// This is only presentation: the dashboard still verifies the live session and
+// Discord permissions before exposing any server data.
+const dashboardLinks = [...document.querySelectorAll('[data-dashboard-link]')];
+
+function paintDashboardLink(session) {
+  dashboardLinks.forEach((link) => {
+    link.textContent = session?.user ? 'Continue' : 'Dashboard';
+    link.setAttribute('aria-label', session?.user ? 'Continue to your Bound dashboard' : 'Open Bound dashboard');
+  });
+}
+
+const { data: { session } } = await supabase.auth.getSession();
+paintDashboardLink(session);
+
+supabase.auth.onAuthStateChange((_event, nextSession) => paintDashboardLink(nextSession));
+
