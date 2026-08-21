@@ -111,6 +111,31 @@ async function authorisedGuild(providerToken, id, userId, permission = 'view_das
   if (!hasPermission(grant, permission)) throw new HttpError(403, 'The server owner has not granted this dashboard permission to you.');
   return { guild: g, access: { owner: false, permissions: grant.permissions } };
 }
+
+async function factionLeaderForGuild(guildId, userId) {
+  const state = await factionForGuild(guildId);
+  const faction = state.approved ? state.faction : null;
+  if (!faction) return null;
+  const rows = await rest(`faction_members?select=user_id,faction_id,faction_role&user_id=eq.${userId}&faction_id=eq.${encodeURIComponent(faction.faction_id)}&limit=1`);
+  const member = rows?.[0];
+  if (member?.faction_role !== 'leader' && faction.creator_id !== userId) return null;
+  return { state, faction, member: member || { user_id: userId, faction_id: faction.faction_id, faction_role: 'leader' } };
+}
+
+async function authorisedFactionLeader(providerToken, guildId, userId) {
+  const guilds = await discordGuilds(providerToken);
+  const guild = guilds.find(x => x.id === guildId);
+  if (!guild) throw new HttpError(403, 'You must still be a member of this Discord server.');
+  const leader = await factionLeaderForGuild(guildId, userId);
+  if (!leader) throw new HttpError(403, 'Only the approved faction leader can use these controls.');
+  return { guild, ...leader };
+}
+
+function rpcResult(value) {
+  const result = Array.isArray(value) ? value[0] : value;
+  if (result?.success === false) throw new HttpError(400, result.message || 'The faction action could not be completed.');
+  return result || {};
+}
 async function sendRewardDm(userId, balance) {
   if (!DISCORD_BOT_TOKEN) return 'unavailable';
   try {
@@ -163,6 +188,52 @@ async function buildOverview(guild, guildId) {
   return { guild: { id: guild.id, name: guild.name, icon_url: iconUrl(guild) }, settings: settings[0] || { guild_id: guildId, prefix: '£' }, activation: activation[0] || null, verification: verify[0] || null, safety: { config: safetyGuild[0] || null, cases: safetyCases, pending: pending.length, cages, active_gags: gags, gag_config: gagConfig[0] || { guild_id: guildId, blocked_channel_ids: [], log_channel_id: null } }, faction: { ...factionState, members: memberRows, upgrades, portfolio, heist_stats: heistStats[0] || null }, economy: { total_nugs: total, total_nugs_display: compactNumber(total), users: balances.length }, activity };
 }
 
+async function buildFactionOnlyOverview(guild, guildId) {
+  const full = await buildOverview(guild, guildId);
+  return {
+    guild: full.guild,
+    settings: { guild_id: guildId, prefix: '£' },
+    activation: null,
+    verification: null,
+    safety: { config: null, cases: [], pending: 0, cages: [], active_gags: [], gag_config: {} },
+    faction: full.faction,
+    economy: full.economy,
+    activity: [],
+    faction_only: true,
+  };
+}
+
+async function factionCentre(guildId, uid) {
+  const leader = await factionLeaderForGuild(guildId, uid);
+  if (!leader) throw new HttpError(403, 'Only the approved faction leader can open the faction control centre.');
+  const factionId = leader.faction.faction_id;
+  const [members, balances, cache, applications, shop, market, portfolio, deposits] = await Promise.all([
+    rest(`faction_members?select=user_id,faction_role,joined_at&faction_id=eq.${encodeURIComponent(factionId)}&order=joined_at.asc`),
+    rest('user_balances?select=user_id,money'),
+    rest('bdsm_discord_user_cache?select=user_id,display_name,avatar_url'),
+    rest(`faction_applications?select=id,user_id,status,application_message,created_at&faction_id=eq.${encodeURIComponent(factionId)}&status=eq.pending&order=created_at.asc`),
+    rpc('view_faction_shop', { p_viewer_user_id: uid }),
+    rpc('view_faction_market', { p_user_id: uid }),
+    rpc('view_faction_portfolio', { p_user_id: uid }),
+    safe(() => rest(`faction_treasury_deposits?select=id,user_id,amount,created_at&faction_id=eq.${encodeURIComponent(factionId)}&order=created_at.desc&limit=12`), []),
+  ]);
+  const balancesByUser = new Map(balances.map(x => [x.user_id, Number(x.money || 0)]));
+  const profiles = new Map(cache.map(x => [x.user_id, x]));
+  const decorate = row => ({ ...row, display_name: profiles.get(row.user_id)?.display_name || row.user_id, avatar_url: profiles.get(row.user_id)?.avatar_url || null });
+  return {
+    leader: true,
+    leader_user_id: uid,
+    faction: leader.faction,
+    personal_balance: balancesByUser.get(uid) || 0,
+    members: members.map(x => ({ ...decorate(x), balance: balancesByUser.get(x.user_id) || 0 })),
+    applications: applications.map(decorate),
+    shop: rpcResult(shop),
+    market: rpcResult(market),
+    portfolio: rpcResult(portfolio),
+    deposits: deposits.map(decorate),
+  };
+}
+
 export default async function handler(req, res) {
   const requestId = randomUUID();
   try {
@@ -184,7 +255,11 @@ export default async function handler(req, res) {
       const allGuilds = await discordGuilds(providerToken);
       const grants = await rest(`dashboard_guild_permissions?select=guild_id,permissions&user_id=eq.${uid}`);
       const grantMap = new Map(grants.map(x => [x.guild_id, x.permissions]));
-      const guilds = allGuilds.filter(g => g.owner || grantMap.get(g.id)?.includes('view_dashboard'));
+      const leaderMemberships = await rest(`faction_members?select=faction_id,faction_role&user_id=eq.${uid}&faction_role=eq.leader`);
+      const leaderFactionIds = leaderMemberships.map(x => x.faction_id);
+      const leaderApprovals = leaderFactionIds.length ? await rest(`faction_server_approvals?select=guild_id,faction_id&enabled=eq.true&faction_id=in.(${leaderFactionIds.map(encodeURIComponent).join(',')})`) : [];
+      const leaderGuildIds = new Set(leaderApprovals.map(x => x.guild_id));
+      const guilds = allGuilds.filter(g => g.owner || grantMap.get(g.id)?.includes('view_dashboard') || leaderGuildIds.has(g.id));
       const ids = guilds.map(g => g.id);
       let activation = [], approvals = [];
       if (ids.length) {
@@ -193,7 +268,7 @@ export default async function handler(req, res) {
       }
       const am = new Map(activation.map(x => [x.guild_id, x])), fm = new Map(approvals.map(x => [x.guild_id, x]));
       const reward = await claimDashboardReward(user);
-      const payload = { user: { id: uid, username: user.user_metadata?.user_name || 'Discord user', display_name: user.user_metadata?.full_name || user.user_metadata?.name || user.user_metadata?.user_name || 'Discord user', avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null, is_bound_owner: BOUND_OWNER_IDS.has(uid) }, reward, guilds: guilds.map(g => ({ id: g.id, name: g.name, icon_url: iconUrl(g), owner: g.owner, permissions: g.owner ? [...DASHBOARD_PERMISSIONS] : grantMap.get(g.id), bound_installed: am.has(g.id), tos_accepted: am.get(g.id)?.tos_accepted || false, faction_status: fm.has(g.id) ? 'approved' : 'awaiting_owner_approval' })), request_id: requestId };
+      const payload = { user: { id: uid, username: user.user_metadata?.user_name || 'Discord user', display_name: user.user_metadata?.full_name || user.user_metadata?.name || user.user_metadata?.user_name || 'Discord user', avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null, is_bound_owner: BOUND_OWNER_IDS.has(uid) }, reward, guilds: guilds.map(g => { const factionLeader = leaderGuildIds.has(g.id); const permissions = g.owner ? [...DASHBOARD_PERMISSIONS] : [...new Set([...(grantMap.get(g.id) || []), ...(factionLeader ? ['view_dashboard', 'manage_factions'] : [])])]; return { id: g.id, name: g.name, icon_url: iconUrl(g), owner: g.owner, faction_leader: factionLeader, faction_only: factionLeader && !g.owner && !grantMap.get(g.id)?.includes('view_dashboard'), permissions, bound_installed: am.has(g.id), tos_accepted: am.get(g.id)?.tos_accepted || false, faction_status: fm.has(g.id) ? 'approved' : 'awaiting_owner_approval' }; }), request_id: requestId };
       // Fold the initially-selected guild's overview into the bootstrap
       // response when the client already knows which guild it wants (e.g.
       // the last one picked, remembered in localStorage) - saves a whole
@@ -204,7 +279,7 @@ export default async function handler(req, res) {
       if (wantGuildId && SNOWFLAKE.test(wantGuildId)) {
         const targetGuild = guilds.find(g => g.id === wantGuildId);
         if (targetGuild) {
-          try { payload.overview = await buildOverview(targetGuild, wantGuildId); }
+          try { payload.overview = leaderGuildIds.has(wantGuildId) && !targetGuild.owner && !grantMap.get(wantGuildId)?.includes('view_dashboard') ? await buildFactionOnlyOverview(targetGuild, wantGuildId) : await buildOverview(targetGuild, wantGuildId); }
           catch (e) { console.error('Bootstrap inline overview failed:', e?.message || e); }
         }
       }
@@ -214,8 +289,63 @@ export default async function handler(req, res) {
     const guildId = validateGuildId(String(req.query.guild_id || ''));
 
     if (action === 'overview' && req.method === 'GET') {
-      const { guild } = await authorisedGuild(providerToken, guildId, uid);
-      return send(res, 200, { ...(await buildOverview(guild, guildId)), request_id: requestId }, requestId);
+      try {
+        const { guild } = await authorisedGuild(providerToken, guildId, uid);
+        return send(res, 200, { ...(await buildOverview(guild, guildId)), request_id: requestId }, requestId);
+      } catch (error) {
+        const { guild } = await authorisedFactionLeader(providerToken, guildId, uid);
+        return send(res, 200, { ...(await buildFactionOnlyOverview(guild, guildId)), request_id: requestId }, requestId);
+      }
+    }
+
+    if (action === 'faction_center' && req.method === 'GET') {
+      await authorisedFactionLeader(providerToken, guildId, uid);
+      return send(res, 200, { ...(await factionCentre(guildId, uid)), request_id: requestId }, requestId);
+    }
+
+    if (action === 'faction_member' && req.method === 'POST') {
+      const { faction } = await authorisedFactionLeader(providerToken, guildId, uid);
+      const memberAction = String(req.body?.member_action || '').toLowerCase();
+      if (!['add', 'kick', 'promote', 'demote'].includes(memberAction)) return send(res, 400, { error: 'Unsupported member action.', request_id: requestId }, requestId);
+      const target = validateSnowflakeOrNull(req.body?.target_user_id, 'Member Discord ID');
+      if (!target || target === uid) return send(res, 400, { error: 'Choose another faction member.', request_id: requestId }, requestId);
+      const result = rpcResult(await rpc('manage_faction_membership', { p_action: memberAction, p_actor_user_id: uid, p_target_user_id: target, p_faction_id: faction.faction_id }));
+      return send(res, 200, { result, request_id: requestId }, requestId);
+    }
+
+    if (action === 'faction_application' && req.method === 'POST') {
+      await authorisedFactionLeader(providerToken, guildId, uid);
+      const reviewAction = String(req.body?.review_action || '').toLowerCase();
+      if (!['approve', 'deny'].includes(reviewAction)) return send(res, 400, { error: 'Unsupported application action.', request_id: requestId }, requestId);
+      const applicationId = Number(req.body?.application_id);
+      if (!Number.isSafeInteger(applicationId) || applicationId <= 0) return send(res, 400, { error: 'Invalid application.', request_id: requestId }, requestId);
+      const result = rpcResult(await rpc('review_faction_application', { p_action: reviewAction, p_reviewer_user_id: uid, p_application_id: applicationId }));
+      return send(res, 200, { result, request_id: requestId }, requestId);
+    }
+
+    if (action === 'faction_deposit' && req.method === 'POST') {
+      const { faction } = await authorisedFactionLeader(providerToken, guildId, uid);
+      const amount = Number(req.body?.amount);
+      if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 1_000_000_000) return send(res, 400, { error: 'Deposit must be between 1 and 1,000,000,000.', request_id: requestId }, requestId);
+      const result = rpcResult(await rpc('dashboard_deposit_to_faction', { p_user_id: uid, p_faction_id: faction.faction_id, p_amount: amount }));
+      return send(res, 200, { result, request_id: requestId }, requestId);
+    }
+
+    if (action === 'faction_shop_buy' && req.method === 'POST') {
+      await authorisedFactionLeader(providerToken, guildId, uid);
+      const itemId = String(req.body?.item_id || '').trim();
+      if (!itemId || itemId.length > 100) return send(res, 400, { error: 'Choose a valid shop item.', request_id: requestId }, requestId);
+      const result = rpcResult(await rpc('buy_faction_shop_item', { p_buyer_user_id: uid, p_item_id: itemId }));
+      return send(res, 200, { result, request_id: requestId }, requestId);
+    }
+
+    if (action === 'faction_market_trade' && req.method === 'POST') {
+      await authorisedFactionLeader(providerToken, guildId, uid);
+      const trade = String(req.body?.trade || '').toLowerCase(), ticker = String(req.body?.ticker || '').trim().toUpperCase(), shares = Number(req.body?.shares);
+      if (!['buy', 'sell'].includes(trade) || !/^[A-Z0-9]{1,12}$/.test(ticker) || !Number.isSafeInteger(shares) || shares <= 0 || shares > 1_000_000) return send(res, 400, { error: 'Enter a valid market order.', request_id: requestId }, requestId);
+      const fn = trade === 'buy' ? 'buy_faction_market_shares' : 'sell_faction_market_shares';
+      const result = rpcResult(await rpc(fn, { p_user_id: uid, p_ticker: ticker, p_shares: shares }));
+      return send(res, 200, { result, request_id: requestId }, requestId);
     }
 
     if (action === 'permissions' && req.method === 'GET') {
@@ -260,7 +390,7 @@ export default async function handler(req, res) {
       if (typeof value !== 'boolean') return send(res, 400, { error: 'Toggle value must be true or false.', request_id: requestId }, requestId);
       if (group === 'verify') { await authorisedGuild(providerToken, guildId, uid, 'manage_settings'); const allowed = new Set(['welcome_enabled', 'post_verify_enabled', 'welcome_ping_user', 'safety_staff_setup_enabled']); if (!allowed.has(key)) return send(res, 400, { error: 'Unsupported verification setting.', request_id: requestId }, requestId); const rows = await patchOrInsert('verify_settings', guildId, { [key]: value }, { setup_by: uid }); return send(res, 200, { group, key, value: Boolean(rows?.[0]?.[key] ?? value), request_id: requestId }, requestId); }
       if (group === 'safety') { await authorisedGuild(providerToken, guildId, uid, 'manage_safety'); const allowed = new Set(['safety_enabled', 'auto_ban_minor_safety', 'auto_ban_harassment_tos', 'auto_ban_network_ban', 'auto_unban_on_removal']); if (!allowed.has(key)) return send(res, 400, { error: 'Unsupported safety setting.', request_id: requestId }, requestId); const rows = await patchOrInsert('safety_guilds', guildId, { [key]: value }, { configured_by: uid }); return send(res, 200, { group, key, value: Boolean(rows?.[0]?.[key] ?? value), request_id: requestId }, requestId); }
-      if (group === 'faction') { await authorisedGuild(providerToken, guildId, uid, 'manage_factions'); const f = await factionForGuild(guildId); if (!f.approved) return send(res, 403, { error: 'Factions are awaiting Bound owner approval for this server.', request_id: requestId }, requestId); if (key !== 'applications_open') return send(res, 400, { error: 'Unsupported faction setting.', request_id: requestId }, requestId); const rows = await rest(`factions?faction_id=eq.${f.faction.faction_id}`, { method: 'PATCH', body: { applications_open: value, updated_at: new Date().toISOString() } }); return send(res, 200, { group, key, value: Boolean(rows?.[0]?.applications_open ?? value), request_id: requestId }, requestId); }
+      if (group === 'faction') { let f; try { await authorisedGuild(providerToken, guildId, uid, 'manage_factions'); f = await factionForGuild(guildId); } catch { const leader = await authorisedFactionLeader(providerToken, guildId, uid); f = leader.state; } if (!f.approved) return send(res, 403, { error: 'Factions are awaiting Bound owner approval for this server.', request_id: requestId }, requestId); if (key !== 'applications_open') return send(res, 400, { error: 'Unsupported faction setting.', request_id: requestId }, requestId); const rows = await rest(`factions?faction_id=eq.${f.faction.faction_id}`, { method: 'PATCH', body: { applications_open: value, updated_at: new Date().toISOString() } }); return send(res, 200, { group, key, value: Boolean(rows?.[0]?.applications_open ?? value), request_id: requestId }, requestId); }
       return send(res, 400, { error: 'Unsupported setting group.', request_id: requestId }, requestId);
     }
 
