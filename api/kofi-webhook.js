@@ -180,14 +180,10 @@ async function syncSubscription(discordUserId, tier, messageId, payload) {
       body: {
         embeds: [{
           color: 0xffd84d,
-          title: 'Ko-fi Payment Received',
+          title: 'New TDS Subscription',
           description: [
-            `**Member** <@${discordUserId}>`,
             `**Tier** ${TIER_LABELS[tier]}`,
-            `**Amount** ${clean(payload.currency, 20) ?? ''} ${amount}`.trim(),
-            `**Premium until** <t:${Math.floor(paidUntil.getTime() / 1000)}:F>`,
-            `**Payment ID** \`${messageId}\``,
-            '**Status** Processed automatically',
+            `**Price** ${clean(payload.currency, 20) ?? ''} ${amount}`.trim(),
           ].join('\n'),
           footer: { text: 'The Dark Side • Ko-fi' },
           timestamp: new Date().toISOString(),
