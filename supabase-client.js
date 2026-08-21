@@ -110,7 +110,9 @@ export const authReady = (async () => {
     if (error) throw error;
     session = data.session;
   } else {
-    session = (await supabase.auth.getSession()).data.session;
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    session = data.session;
   }
 
   if (session?.provider_token) {

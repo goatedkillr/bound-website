@@ -10,7 +10,8 @@ const generic={
  roleplay:['Social & RP','Ownership, gagging and social systems share the same Supabase backend.',[['♡','Interactions','Hug, kiss, bite, cuddle and more'],['◉','Ownership','Claims, owners and subs'],['◇','Gag system','Consent-based gag controls']]],
  logs:['Audit Log','Recent activity is loaded on Overview. Full audit search is the next dashboard module.',[['≣','Moderation','Actions and reasons'],['⛓','Factions','Bonds and faction activity'],['◆','Safety','Protected review history']]],
 };
-let session=null,providerToken=getStoredProviderToken()||null,managedGuilds=[],selectedGuildId=localStorage.getItem('bound_dashboard_guild')||null,overview=null,bootstrapRunning=false;
+let session=null,providerToken=getStoredProviderToken()||null,managedGuilds=[],selectedGuildId=localStorage.getItem('bound_dashboard_guild')||null,overview=null,bootstrapRunning=false,oauthStarting=false;
+const OAUTH_START_KEY='bound_discord_oauth_started_at';
 const permissionLabels={manage_settings:'Server settings',manage_safety:'Safety controls',manage_factions:'Faction controls'};
 
 function escapeHtml(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -35,7 +36,23 @@ document.addEventListener('keydown',event=>{if(event.key==='Escape')setSidebarOp
 window.matchMedia('(min-width: 761px)').addEventListener('change',event=>{if(event.matches)setSidebarOpen(false)});
 if($('uptimeBars'))$('uptimeBars').innerHTML=Array.from({length:36},()=>'<i></i>').join('');
 
-async function signInWithDiscord(){try{setLoading($('authDiscordBtn'),true,'Opening Discord…');const{error}=await supabase.auth.signInWithOAuth({provider:'discord',options:{scopes:'identify guilds',redirectTo:`${location.origin}/dashboard.html`}});if(error)throw error}catch(e){toast('Discord login failed',e.message||'Could not start login.');setLoading($('authDiscordBtn'),false)}}
+async function signInWithDiscord(){
+ if(oauthStarting)return;
+ const previous=Number(sessionStorage.getItem(OAUTH_START_KEY)||0);
+ if(previous&&Date.now()-previous<15_000)return;
+ oauthStarting=true;
+ sessionStorage.setItem(OAUTH_START_KEY,String(Date.now()));
+ try{
+   setLoading($('authDiscordBtn'),true,'Opening Discord…');
+   const{error}=await supabase.auth.signInWithOAuth({provider:'discord',options:{scopes:'identify guilds',redirectTo:`${location.origin}/dashboard.html`,skipBrowserRedirect:false}});
+   if(error)throw error;
+ }catch(e){
+   oauthStarting=false;
+   sessionStorage.removeItem(OAUTH_START_KEY);
+   toast('Discord login failed',e.message||'Could not start login.');
+   setLoading($('authDiscordBtn'),false);
+ }
+}
 $('authDiscordBtn')?.addEventListener('click',signInWithDiscord);
 
 if(isAuthCallback){
@@ -188,9 +205,11 @@ supabase.auth.onAuthStateChange((event,newSession)=>{
 });
 
 (async()=>{
+ if(isAuthCallback)sessionStorage.removeItem(OAUTH_START_KEY);
  let existing=null;
  try{existing=await authReady}catch(error){console.error('Bound sign-in failed:',error);sessionStorage.setItem('bound_auth_error',error?.message||'Discord sign-in failed.');renderSignedOut();return}
  session=existing;
+ sessionStorage.removeItem(OAUTH_START_KEY);
  if(existing?.provider_token)providerToken=existing.provider_token;
  if(session&&providerToken){await bootstrap();return}
  if(session&&!providerToken){
