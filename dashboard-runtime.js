@@ -63,7 +63,8 @@
     if(!document.querySelector('script[src="account-ui.js"]')){const s=document.createElement('script');s.type='module';s.src='account-ui.js';document.body.appendChild(s)}
     // dashboard.js is the single owner of Discord/Supabase authentication.
     // A second controller here gave the same buttons multiple handlers.
-    if(!document.querySelector('script[src="admin-auth-guard.js"]')){const s=document.createElement('script');s.type='module';s.src='admin-auth-guard.js';document.body.appendChild(s)}
+    // One Discord login is enough. Protected API routes verify the current
+    // Discord token and permissions on every request.
     if(!document.querySelector('link[href="faction-control.css"]')){const l=document.createElement('link');l.rel='stylesheet';l.href='faction-control.css';document.head.appendChild(l)}
     if(!document.querySelector('script[src="faction-control.js"]')){const s=document.createElement('script');s.type='module';s.src='faction-control.js';document.body.appendChild(s)}
   };
