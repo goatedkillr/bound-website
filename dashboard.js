@@ -1,4 +1,4 @@
-import { supabase, getStoredProviderToken, ensureFreshProviderToken, refreshProviderToken, clearProviderTokens } from './supabase-client.js';
+import { supabase, authReady, isAuthCallback, getStoredProviderToken, ensureFreshProviderToken, refreshProviderToken, clearProviderTokens } from './supabase-client.js';
 
 const $=id=>document.getElementById(id);
 const pages={overview:'Overview',profile:'My Bound Profile',servers:'Servers',safety:'Safety & Consent',moderation:'Moderation',tickets:'Tickets & Support',economy:'Factions',staff:'Staff',roleplay:'Social & RP',logs:'Audit Log',settings:'Server Settings'};
@@ -37,6 +37,13 @@ if($('uptimeBars'))$('uptimeBars').innerHTML=Array.from({length:36},()=>'<i></i>
 
 async function signInWithDiscord(){try{setLoading($('authDiscordBtn'),true,'Opening Discord…');const{error}=await supabase.auth.signInWithOAuth({provider:'discord',options:{scopes:'identify guilds',redirectTo:`${location.origin}/dashboard.html`}});if(error)throw error}catch(e){toast('Discord login failed',e.message||'Could not start login.');setLoading($('authDiscordBtn'),false)}}
 $('authDiscordBtn')?.addEventListener('click',signInWithDiscord);
+
+if(isAuthCallback){
+ const heading=document.querySelector('#authGate h2'),copy=document.querySelector('#authGate p'),button=$('authDiscordBtn');
+ if(heading)heading.textContent='Connecting your dashboard';
+ if(copy)copy.textContent='Discord is connected. Loading your servers now…';
+ if(button){button.textContent='Connecting…';button.disabled=true}
+}
 $('loginBtn')?.addEventListener('click',()=>session?toggleServerPicker():signInWithDiscord());
 $('logoutBtn')?.addEventListener('click',async()=>{await supabase.auth.signOut();clearProviderTokens();localStorage.removeItem('bound_dashboard_guild');session=null;providerToken=null;managedGuilds=[];selectedGuildId=null;renderSignedOut()});
 function renderSignedOut(reason){
@@ -178,7 +185,8 @@ supabase.auth.onAuthStateChange((event,newSession)=>{
 });
 
 (async()=>{
- const{data:{session:existing}}=await supabase.auth.getSession();
+ let existing=null;
+ try{existing=await authReady}catch(error){console.error('Bound sign-in failed:',error);sessionStorage.setItem('bound_auth_error',error?.message||'Discord sign-in failed.');renderSignedOut();return}
  session=existing;
  if(existing?.provider_token)providerToken=existing.provider_token;
  if(session&&providerToken){await bootstrap();return}
