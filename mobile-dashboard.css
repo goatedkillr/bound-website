@@ -1,0 +1,151 @@
+.sidebar-close,
+.sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  body.sidebar-open {
+    overflow: hidden;
+  }
+
+  .topbar {
+    height: 72px;
+    gap: 12px;
+    padding: 0 14px;
+    background: rgba(8, 7, 11, 0.94);
+  }
+
+  .topbar-left {
+    min-width: 0;
+    flex: 1;
+    gap: 11px;
+  }
+
+  .menu-btn {
+    display: grid;
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 12px;
+    background: #15121a;
+    color: #f0c5e2;
+    font-size: 18px;
+    cursor: pointer;
+  }
+
+  .topbar-title {
+    min-width: 0;
+  }
+
+  .topbar-title small {
+    display: block;
+    overflow: hidden;
+    color: #766c79;
+    font-size: 6px;
+    letter-spacing: 0.13em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar h1 {
+    overflow: hidden;
+    max-width: 42vw;
+    margin-top: 4px;
+    font-size: 16px;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar-actions {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+
+  .notification {
+    overflow: hidden;
+    max-width: 116px;
+    min-width: 0;
+    height: 40px;
+    padding: 0 12px;
+    border-radius: 12px;
+    color: #eaa7d2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar {
+    width: min(86vw, 300px);
+    padding-top: 16px;
+    z-index: 110;
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0.22s ease;
+  }
+
+  .sidebar.open {
+    visibility: visible;
+  }
+
+  .sidebar-close {
+    position: absolute;
+    top: 17px;
+    right: 14px;
+    z-index: 2;
+    display: grid;
+    width: 36px;
+    height: 36px;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 11px;
+    background: #17131b;
+    color: #f0c5e2;
+    font: inherit;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .dash-brand {
+    padding-right: 48px;
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: block;
+    border: 0;
+    background: rgba(3, 2, 5, 0.66);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+
+  .sidebar-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (max-width: 390px) {
+  .topbar {
+    padding-inline: 10px;
+  }
+
+  .topbar-title small {
+    display: none;
+  }
+
+  .topbar h1 {
+    max-width: 34vw;
+    margin-top: 0;
+  }
+
+  .notification {
+    max-width: 104px;
+    padding-inline: 10px;
+  }
+}
+
