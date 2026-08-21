@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hpbqoochibnrxzxeuazb.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_CQPZKB4Houc0UPn-sccxOQ_uZTD-X37';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || process.env.BOUND_BOT_TOKEN;
 const BOUND_OWNER_IDS = new Set(['444659348854013955']);
 const SNOWFLAKE = /^\d{17,20}$/;
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -14,6 +15,7 @@ const REQUEST_TIMEOUT_MS = 12_000;
 const DISCORD_CACHE_MS = 120_000;
 const rateBuckets = new Map();
 const discordCache = new Map();
+const DASHBOARD_PERMISSIONS = new Set(['view_dashboard', 'manage_settings', 'manage_safety', 'manage_factions']);
 
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -76,7 +78,6 @@ async function discordGuilds(token) {
   if (discordCache.size > 250) for (const [k, v] of discordCache) if (v.expires <= Date.now()) discordCache.delete(k);
   return value;
 }
-function canManageGuild(g) { if (g.owner) return true; const p = BigInt(g.permissions || '0'); return Boolean((p & 0x8n) || (p & 0x20n)); }
 function iconUrl(g) { return g?.icon ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.webp?size=128` : null; }
 function compactNumber(v) { const n = Number(v || 0); if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`; if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`; return String(n); }
 function discordUserId(u) { return String(u?.user_metadata?.provider_id || u?.user_metadata?.sub || u?.identities?.[0]?.identity_data?.sub || u?.id || ''); }
@@ -90,12 +91,51 @@ async function rest(path, { method = 'GET', body, prefer = 'return=representatio
   if (!r.ok) throw new HttpError(r.status >= 500 ? 502 : r.status, typeof data === 'string' ? 'Database request failed.' : (data?.message || `Database request failed (${r.status})`));
   return data;
 }
+async function rpc(name, body) {
+  return rest(`rpc/${name}`, { method: 'POST', body });
+}
 async function safe(q, f) { try { return await q(); } catch (e) { console.error('Optional dashboard query failed:', e?.message || e); return f; } }
-async function authorisedGuild(providerToken, id) {
+async function permissionGrant(guildId, userId) {
+  const rows = await rest(`dashboard_guild_permissions?select=guild_id,user_id,permissions,granted_by,updated_at&guild_id=eq.${guildId}&user_id=eq.${userId}&limit=1`);
+  return rows?.[0] || null;
+}
+function hasPermission(grant, permission) {
+  return Array.isArray(grant?.permissions) && grant.permissions.includes('view_dashboard') && grant.permissions.includes(permission);
+}
+async function authorisedGuild(providerToken, id, userId, permission = 'view_dashboard') {
   const gs = await discordGuilds(providerToken);
-  const g = gs.find(x => x.id === id && canManageGuild(x));
-  if (!g) throw new HttpError(403, 'You do not have Manage Server permission for this Discord server.');
-  return g;
+  const g = gs.find(x => x.id === id);
+  if (!g) throw new HttpError(403, 'This Discord server is not available to your account.');
+  if (g.owner) return { guild: g, access: { owner: true, permissions: [...DASHBOARD_PERMISSIONS] } };
+  const grant = await permissionGrant(id, userId);
+  if (!hasPermission(grant, permission)) throw new HttpError(403, 'The server owner has not granted this dashboard permission to you.');
+  return { guild: g, access: { owner: false, permissions: grant.permissions } };
+}
+async function sendRewardDm(userId, balance) {
+  if (!DISCORD_BOT_TOKEN) return 'unavailable';
+  try {
+    const channelResponse = await fetchTimed('https://discord.com/api/v10/users/@me/channels', {
+      method: 'POST', headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ recipient_id: userId }),
+    });
+    if (!channelResponse.ok) return 'failed';
+    const channel = await channelResponse.json();
+    const messageResponse = await fetchTimed(`https://discord.com/api/v10/channels/${channel.id}/messages`, {
+      method: 'POST', headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds: [{ title: '10,000 global currency added', description: 'Thanks for connecting your Discord account to the Bound dashboard. Your one-time global economy reward is ready.', color: 15690692, fields: [{ name: 'New global balance', value: compactNumber(balance), inline: true }], footer: { text: 'Bound • Discord, but closer.' } }] }),
+    });
+    return messageResponse.ok ? 'sent' : 'failed';
+  } catch { return 'failed'; }
+}
+async function claimDashboardReward(user) {
+  const userId = discordUserId(user);
+  const rows = await rpc('claim_dashboard_connect_reward', { p_user_id: userId, p_auth_user_id: user.id });
+  const reward = rows?.[0] || { claimed: false, balance: 0, amount: 10000 };
+  if (reward.claimed) {
+    const dmStatus = await sendRewardDm(userId, reward.balance);
+    await safe(() => rest(`dashboard_connect_rewards?user_id=eq.${userId}`, { method: 'PATCH', body: { dm_status: dmStatus, dm_attempted_at: new Date().toISOString() } }), null);
+    reward.dm_status = dmStatus;
+  }
+  return reward;
 }
 async function patchOrInsert(table, guildId, patch, base = {}) {
   const cur = await rest(`${table}?select=guild_id&guild_id=eq.${guildId}`);
@@ -141,14 +181,19 @@ export default async function handler(req, res) {
     rateLimit(`${uid}:${req.method === 'GET' ? 'read' : 'write'}`, req.method === 'GET' ? 120 : 30);
 
     if (action === 'bootstrap' && req.method === 'GET') {
-      const guilds = (await discordGuilds(providerToken)).filter(canManageGuild), ids = guilds.map(g => g.id);
+      const allGuilds = await discordGuilds(providerToken);
+      const grants = await rest(`dashboard_guild_permissions?select=guild_id,permissions&user_id=eq.${uid}`);
+      const grantMap = new Map(grants.map(x => [x.guild_id, x.permissions]));
+      const guilds = allGuilds.filter(g => g.owner || grantMap.get(g.id)?.includes('view_dashboard'));
+      const ids = guilds.map(g => g.id);
       let activation = [], approvals = [];
       if (ids.length) {
         activation = await safe(() => rest(`bound_guild_activation?select=guild_id,tos_accepted&guild_id=in.(${ids.join(',')})`), []);
         approvals = await safe(() => rest(`faction_server_approvals?select=guild_id,faction_id,enabled&guild_id=in.(${ids.join(',')})&enabled=eq.true`), []);
       }
       const am = new Map(activation.map(x => [x.guild_id, x])), fm = new Map(approvals.map(x => [x.guild_id, x]));
-      const payload = { user: { id: uid, username: user.user_metadata?.user_name || 'Discord user', display_name: user.user_metadata?.full_name || user.user_metadata?.name || user.user_metadata?.user_name || 'Discord user', avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null, is_bound_owner: BOUND_OWNER_IDS.has(uid) }, guilds: guilds.map(g => ({ id: g.id, name: g.name, icon_url: iconUrl(g), owner: g.owner, bound_installed: am.has(g.id), tos_accepted: am.get(g.id)?.tos_accepted || false, faction_status: fm.has(g.id) ? 'approved' : 'awaiting_owner_approval' })), request_id: requestId };
+      const reward = await claimDashboardReward(user);
+      const payload = { user: { id: uid, username: user.user_metadata?.user_name || 'Discord user', display_name: user.user_metadata?.full_name || user.user_metadata?.name || user.user_metadata?.user_name || 'Discord user', avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null, is_bound_owner: BOUND_OWNER_IDS.has(uid) }, reward, guilds: guilds.map(g => ({ id: g.id, name: g.name, icon_url: iconUrl(g), owner: g.owner, permissions: g.owner ? [...DASHBOARD_PERMISSIONS] : grantMap.get(g.id), bound_installed: am.has(g.id), tos_accepted: am.get(g.id)?.tos_accepted || false, faction_status: fm.has(g.id) ? 'approved' : 'awaiting_owner_approval' })), request_id: requestId };
       // Fold the initially-selected guild's overview into the bootstrap
       // response when the client already knows which guild it wants (e.g.
       // the last one picked, remembered in localStorage) - saves a whole
@@ -167,13 +212,41 @@ export default async function handler(req, res) {
     }
 
     const guildId = validateGuildId(String(req.query.guild_id || ''));
-    const guild = await authorisedGuild(providerToken, guildId);
 
     if (action === 'overview' && req.method === 'GET') {
+      const { guild } = await authorisedGuild(providerToken, guildId, uid);
       return send(res, 200, { ...(await buildOverview(guild, guildId)), request_id: requestId }, requestId);
     }
 
+    if (action === 'permissions' && req.method === 'GET') {
+      const { guild, access } = await authorisedGuild(providerToken, guildId, uid);
+      if (!guild.owner || !access.owner) return send(res, 403, { error: 'Only the Discord server owner can manage dashboard access.', request_id: requestId }, requestId);
+      const rows = await rest(`dashboard_guild_permissions?select=guild_id,user_id,permissions,granted_by,created_at,updated_at&guild_id=eq.${guildId}&order=updated_at.desc`);
+      const ids = rows.map(x => x.user_id);
+      const profiles = ids.length ? await safe(() => rest(`bdsm_discord_user_cache?select=user_id,display_name,avatar_url&user_id=in.(${ids.join(',')})`), []) : [];
+      const profileMap = new Map(profiles.map(x => [x.user_id, x]));
+      return send(res, 200, { grants: rows.map(x => ({ ...x, profile: profileMap.get(x.user_id) || null })), request_id: requestId }, requestId);
+    }
+
+    if (action === 'permissions' && req.method === 'POST') {
+      const { guild, access } = await authorisedGuild(providerToken, guildId, uid);
+      if (!guild.owner || !access.owner) return send(res, 403, { error: 'Only the Discord server owner can manage dashboard access.', request_id: requestId }, requestId);
+      const targetUserId = validateSnowflakeOrNull(req.body?.user_id, 'Discord user ID');
+      if (!targetUserId) return send(res, 400, { error: 'Enter a Discord user ID.', request_id: requestId }, requestId);
+      if (targetUserId === uid) return send(res, 400, { error: 'The server owner already has full dashboard access.', request_id: requestId }, requestId);
+      if (req.body?.revoke === true) {
+        await rest(`dashboard_guild_permissions?guild_id=eq.${guildId}&user_id=eq.${targetUserId}`, { method: 'DELETE', prefer: 'return=minimal' });
+        return send(res, 200, { revoked: true, user_id: targetUserId, request_id: requestId }, requestId);
+      }
+      const requested = Array.isArray(req.body?.permissions) ? req.body.permissions.map(String) : [];
+      if (requested.some(x => !DASHBOARD_PERMISSIONS.has(x))) return send(res, 400, { error: 'Unsupported dashboard permission.', request_id: requestId }, requestId);
+      const permissions = [...new Set(['view_dashboard', ...requested])];
+      const rows = await rest('dashboard_guild_permissions', { method: 'POST', prefer: 'resolution=merge-duplicates,return=representation', body: { guild_id: guildId, user_id: targetUserId, permissions, granted_by: uid, updated_at: new Date().toISOString() } });
+      return send(res, 200, { grant: rows?.[0] || { guild_id: guildId, user_id: targetUserId, permissions }, request_id: requestId }, requestId);
+    }
+
     if (action === 'settings' && req.method === 'PATCH') {
+      await authorisedGuild(providerToken, guildId, uid, 'manage_settings');
       const prefix = String(req.body?.prefix ?? '').trimEnd();
       if (!prefix || prefix.length > 5 || /[\r\n\u0000-\u001f]/.test(prefix)) return send(res, 400, { error: 'Prefix must be 1–5 visible characters.', request_id: requestId }, requestId);
       const updated = await rest(`guild_settings?guild_id=eq.${guildId}`, { method: 'PATCH', body: { prefix, updated_at: new Date().toISOString() } });
@@ -185,13 +258,14 @@ export default async function handler(req, res) {
     if (action === 'toggle' && req.method === 'PATCH') {
       const group = String(req.body?.group || ''), key = String(req.body?.key || ''), value = req.body?.value;
       if (typeof value !== 'boolean') return send(res, 400, { error: 'Toggle value must be true or false.', request_id: requestId }, requestId);
-      if (group === 'verify') { const allowed = new Set(['welcome_enabled', 'post_verify_enabled', 'welcome_ping_user', 'safety_staff_setup_enabled']); if (!allowed.has(key)) return send(res, 400, { error: 'Unsupported verification setting.', request_id: requestId }, requestId); const rows = await patchOrInsert('verify_settings', guildId, { [key]: value }, { setup_by: uid }); return send(res, 200, { group, key, value: Boolean(rows?.[0]?.[key] ?? value), request_id: requestId }, requestId); }
-      if (group === 'safety') { const allowed = new Set(['safety_enabled', 'auto_ban_minor_safety', 'auto_ban_harassment_tos', 'auto_ban_network_ban', 'auto_unban_on_removal']); if (!allowed.has(key)) return send(res, 400, { error: 'Unsupported safety setting.', request_id: requestId }, requestId); const rows = await patchOrInsert('safety_guilds', guildId, { [key]: value }, { configured_by: uid }); return send(res, 200, { group, key, value: Boolean(rows?.[0]?.[key] ?? value), request_id: requestId }, requestId); }
-      if (group === 'faction') { const f = await factionForGuild(guildId); if (!f.approved) return send(res, 403, { error: 'Factions are awaiting Bound owner approval for this server.', request_id: requestId }, requestId); if (key !== 'applications_open') return send(res, 400, { error: 'Unsupported faction setting.', request_id: requestId }, requestId); const rows = await rest(`factions?faction_id=eq.${f.faction.faction_id}`, { method: 'PATCH', body: { applications_open: value, updated_at: new Date().toISOString() } }); return send(res, 200, { group, key, value: Boolean(rows?.[0]?.applications_open ?? value), request_id: requestId }, requestId); }
+      if (group === 'verify') { await authorisedGuild(providerToken, guildId, uid, 'manage_settings'); const allowed = new Set(['welcome_enabled', 'post_verify_enabled', 'welcome_ping_user', 'safety_staff_setup_enabled']); if (!allowed.has(key)) return send(res, 400, { error: 'Unsupported verification setting.', request_id: requestId }, requestId); const rows = await patchOrInsert('verify_settings', guildId, { [key]: value }, { setup_by: uid }); return send(res, 200, { group, key, value: Boolean(rows?.[0]?.[key] ?? value), request_id: requestId }, requestId); }
+      if (group === 'safety') { await authorisedGuild(providerToken, guildId, uid, 'manage_safety'); const allowed = new Set(['safety_enabled', 'auto_ban_minor_safety', 'auto_ban_harassment_tos', 'auto_ban_network_ban', 'auto_unban_on_removal']); if (!allowed.has(key)) return send(res, 400, { error: 'Unsupported safety setting.', request_id: requestId }, requestId); const rows = await patchOrInsert('safety_guilds', guildId, { [key]: value }, { configured_by: uid }); return send(res, 200, { group, key, value: Boolean(rows?.[0]?.[key] ?? value), request_id: requestId }, requestId); }
+      if (group === 'faction') { await authorisedGuild(providerToken, guildId, uid, 'manage_factions'); const f = await factionForGuild(guildId); if (!f.approved) return send(res, 403, { error: 'Factions are awaiting Bound owner approval for this server.', request_id: requestId }, requestId); if (key !== 'applications_open') return send(res, 400, { error: 'Unsupported faction setting.', request_id: requestId }, requestId); const rows = await rest(`factions?faction_id=eq.${f.faction.faction_id}`, { method: 'PATCH', body: { applications_open: value, updated_at: new Date().toISOString() } }); return send(res, 200, { group, key, value: Boolean(rows?.[0]?.applications_open ?? value), request_id: requestId }, requestId); }
       return send(res, 400, { error: 'Unsupported setting group.', request_id: requestId }, requestId);
     }
 
     if (action === 'gag_config' && req.method === 'PATCH') {
+      await authorisedGuild(providerToken, guildId, uid, 'manage_safety');
       const blockedRaw = Array.isArray(req.body?.blocked_channel_ids) ? req.body.blocked_channel_ids : [];
       if (blockedRaw.length > 50) return send(res, 400, { error: 'Too many blocked gag channels.', request_id: requestId }, requestId);
       const blocked = [...new Set(blockedRaw.map(x => validateSnowflakeOrNull(x, 'Blocked channel')).filter(Boolean))];
@@ -201,6 +275,7 @@ export default async function handler(req, res) {
     }
 
     if (action === 'faction_approve' && req.method === 'POST') {
+      await authorisedGuild(providerToken, guildId, uid);
       if (!BOUND_OWNER_IDS.has(uid)) return send(res, 403, { error: 'Only the Bound owner can approve server factions.', request_id: requestId }, requestId);
       const factionId = String(req.body?.faction_id || '').trim();
       if (!factionId || factionId.length > 100) return send(res, 400, { error: 'Choose a valid faction to approve.', request_id: requestId }, requestId);
@@ -217,3 +292,4 @@ export default async function handler(req, res) {
     return send(res, status, { error: e instanceof Error ? e.message : 'Unexpected dashboard error.', request_id: requestId }, requestId);
   }
 }
+
