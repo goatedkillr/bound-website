@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta name="description" content="Bound dashboard for community safety factions staff and private server systems" />
+  <meta name="theme-color" content="#120d14" />
   <title>Bound Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,8 +16,9 @@
   <link rel="stylesheet" href="dashboard-finish.css" />
   <link rel="stylesheet" href="private-controls.css" />
   <link rel="stylesheet" href="ticket-controls.css" />
+  <link rel="stylesheet" href="accessibility.css" />
 </head>
-<body>
+<body><a class="skip-link" href="#dashboard-content">Skip to dashboard content</a>
   <div class="app-shell">
     <aside class="sidebar" id="sidebar">
       <a class="dash-brand" href="index.html" aria-label="Bound home"><span class="logo"><img src="bound-logo.png" alt="Bound logo"></span><div><strong>Bound</strong><small>CONTROL CENTRE</small></div></a>
@@ -29,7 +31,7 @@
       </nav>
       <div class="sidebar-bottom"><a href="index.html" class="support-link">← Back to Bound</a><div class="user-chip" id="userChip"><div class="user-avatar" id="userAvatar">?</div><div><strong id="userName">Not signed in</strong><small id="userRole">Discord account</small></div><button class="icon-btn" id="logoutBtn" title="Sign out">↪</button></div></div>
     </aside>
-    <main class="dashboard-main">
+    <main class="dashboard-main" id="dashboard-content">
       <header class="topbar"><div class="topbar-left"><button class="menu-btn" id="menuBtn">☰</button><div><small>BOUND / CONTROL CENTRE</small><h1 id="pageTitle">Overview</h1></div></div><div class="topbar-actions"><button class="status-pill"><i></i> Bound Online</button><a class="top-btn" href="https://discord.gg/NVseqMDNRd" target="_blank" rel="noopener noreferrer">Support</a><button class="notification" id="loginBtn">Discord Login</button></div></header>
       <div class="dashboard-content">
         <section class="view active" id="view-overview">
@@ -55,3 +57,4 @@
   <script src="ticket-controls.js"></script>
 </body>
 </html>
+
