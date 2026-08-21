@@ -100,7 +100,7 @@
 
   function arm(){
     Object.keys(pages).forEach(k=>render(k));
-    document.querySelectorAll('.nav-item[data-view]').forEach(btn=>btn.addEventListener('click',()=>{const k=btn.dataset.view;if(pages[k])render(k);if(k==='tickets')setTimeout(loadTicketSurface,40)}));
+    document.querySelectorAll('.nav-item[data-view]').forEach(btn=>btn.addEventListener('click',()=>{const k=btn.dataset.view;if(pages[k])render(k);if(k==='tickets')setTimeout(loadTicketSurface,40);if(k==='staff')setTimeout(loadPersonalContext,40)}));
     document.addEventListener('click',event=>{if(event.target?.closest?.('[data-guild-id]'))setTimeout(loadTicketSurface,250)},true);
     const serverName=document.getElementById('serverName');if(serverName)new MutationObserver(()=>setTimeout(loadTicketSurface,80)).observe(serverName,{childList:true,subtree:true,characterData:true});
     const overview=document.getElementById('view-overview');
@@ -110,3 +110,4 @@
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',arm);else arm();
 })();
+
