@@ -87,7 +87,7 @@
       <div class="private-modules" id="privatePossibilityGrid">
         <article class="private-module"><span class="private-module-icon">♙</span><small>STAFF OPERATIONS</small><h4>Run your team properly.</h4><p>Clocking, temporary roles, breaks, assignments, performance and automated access.</p></article>
         <article class="private-module"><span class="private-module-icon">▱</span><small>TICKETS & SUPPORT</small><h4>Support that feels custom.</h4><p>Panels, questions, claims, transcripts, ratings and staff tracking.</p></article>
-        <article class="private-module"><span class="private-module-icon">₦</span><small>SERVER ECONOMY</small><h4>Your own economy loop.</h4><p>Currency, work, fishing, hunting, robberies, heists, shops and progression.</p></article>
+        <article class="private-module"><span class="private-module-icon">⛓</span><small>SERVER ECONOMY</small><h4>Your own economy loop.</h4><p>Currency, work, fishing, hunting, robberies, heists, shops and progression.</p></article>
         <article class="private-module"><span class="private-module-icon">✦</span><small>SUBSCRIPTIONS</small><h4>Make premium feel premium.</h4><p>Personal roles, giveable roles, panels, autoresponders and perks.</p></article>
         <article class="private-module"><span class="private-module-icon">⌁</span><small>MODERATION</small><h4>Moderation built for your rules.</h4><p>Cases, configurable DMs, jail flows, isolation and private logs.</p></article>
         <article class="private-module"><span class="private-module-icon">⚙</span><small>AUTOMATION</small><h4>Remove repetitive work.</h4><p>AFK, levels, auto roles, reactions, threads and custom workflows.</p></article>
@@ -100,7 +100,7 @@
   const MODULES = {
     staff: { icon:'♙', label:'STAFF OPERATIONS', title:'Staff control centre', desc:'Clocking, staff members, breaks, assignments and temporary access.' },
     tickets: { icon:'▱', label:'TICKETS & SUPPORT', title:'Advanced support stack', desc:'Tickets, claims, transcripts, ratings and verification workflows.' },
-    economy: { icon:'₦', label:'SERVER ECONOMY', title:'Private economy', desc:'Nugs, wallets, banks, work, games, shops and progression.' },
+    economy: { icon:'⛓', label:'SERVER ECONOMY', title:'Private economy', desc:'Bonds, wallets, banks, work, games, shops and progression.' },
     subscriptions: { icon:'✦', label:'SUBSCRIPTIONS', title:'Premium subscriptions', desc:'VIP, Filthy and Plus roles, perks and subscriber tools.' },
     moderation: { icon:'⌁', label:'MODERATION', title:'Private moderation', desc:'Warnings, mutes, bans, jail, configurable DMs and case history.' },
     automation: { icon:'⚙', label:'AUTOMATION', title:'Server automation', desc:'AFK, levels, auto channels, reactions and repetitive workflow removal.' },
@@ -140,7 +140,7 @@
     const metricRows=[];
     if(build.modules?.tickets) metricRows.push(['OPEN TICKETS',s.tickets?.open??0]);
     if(build.modules?.staff) metricRows.push(['STAFF LIVE',s.staff?.active_shifts??0]);
-    if(build.modules?.economy) metricRows.push(['NUGS',compact(s.economy?.total_nugs)]);
+    if(build.modules?.economy) metricRows.push(['BONDS',compact(s.economy?.total_nugs)]);
     if(build.modules?.subscriptions) metricRows.push(['SUBSCRIBERS',s.subscriptions?.active??0]);
     if(build.modules?.moderation) metricRows.push(['MOD CASES',s.moderation?.cases??0]);
     const mm=document.getElementById('privateMiniMetrics'); if(mm) mm.innerHTML=metricRows.slice(0,3).map(([a,b])=>`<div><small>${a}</small><b>${b}</b></div>`).join('');
