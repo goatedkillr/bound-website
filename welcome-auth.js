@@ -1,4 +1,4 @@
-import { supabase } from './supabase-client.js';
+import { supabase, authReady } from './supabase-client.js';
 
 // Make the homepage feel like a returning dashboard rather than a fresh login.
 // This is only presentation: the dashboard still verifies the live session and
@@ -12,8 +12,7 @@ function paintDashboardLink(session) {
   });
 }
 
-const { data: { session } } = await supabase.auth.getSession();
-paintDashboardLink(session);
+paintDashboardLink(await authReady.catch(() => null));
 
 supabase.auth.onAuthStateChange((_event, nextSession) => paintDashboardLink(nextSession));
 
