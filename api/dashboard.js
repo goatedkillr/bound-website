@@ -122,6 +122,21 @@ async function factionLeaderForGuild(guildId, userId) {
   return { state, faction, member: member || { user_id: userId, faction_id: faction.faction_id, faction_role: 'leader' } };
 }
 
+async function factionLeaderForUser(userId) {
+  const memberships = await rest(`faction_members?select=user_id,faction_id,faction_role&user_id=eq.${userId}&faction_role=eq.leader&limit=1`);
+  const member = memberships?.[0];
+  if (!member) return null;
+  const factions = await rest(`factions?select=*&faction_id=eq.${encodeURIComponent(member.faction_id)}&limit=1`);
+  const faction = factions?.[0];
+  return faction ? { faction, member } : null;
+}
+
+async function authorisedGlobalFactionLeader(userId) {
+  const leader = await factionLeaderForUser(userId);
+  if (!leader) throw new HttpError(403, 'Only the faction leader can use these controls.');
+  return leader;
+}
+
 async function authorisedFactionLeader(providerToken, guildId, userId) {
   const guilds = await discordGuilds(providerToken);
   const guild = guilds.find(x => x.id === guildId);
@@ -203,9 +218,8 @@ async function buildFactionOnlyOverview(guild, guildId) {
   };
 }
 
-async function factionCentre(guildId, uid) {
-  const leader = await factionLeaderForGuild(guildId, uid);
-  if (!leader) throw new HttpError(403, 'Only the approved faction leader can open the faction control centre.');
+async function factionCentre(uid) {
+  const leader = await authorisedGlobalFactionLeader(uid);
   const factionId = leader.faction.faction_id;
   const [members, balances, cache, applications, shop, market, portfolio, deposits] = await Promise.all([
     rest(`faction_members?select=user_id,faction_role,joined_at&faction_id=eq.${encodeURIComponent(factionId)}&order=joined_at.asc`),
@@ -253,6 +267,7 @@ export default async function handler(req, res) {
 
     if (action === 'bootstrap' && req.method === 'GET') {
       const allGuilds = await discordGuilds(providerToken);
+      const globalFactionLeader = await factionLeaderForUser(uid);
       const grants = await rest(`dashboard_guild_permissions?select=guild_id,permissions&user_id=eq.${uid}`);
       const grantMap = new Map(grants.map(x => [x.guild_id, x.permissions]));
       const leaderMemberships = await rest(`faction_members?select=faction_id,faction_role&user_id=eq.${uid}&faction_role=eq.leader`);
@@ -268,7 +283,7 @@ export default async function handler(req, res) {
       }
       const am = new Map(activation.map(x => [x.guild_id, x])), fm = new Map(approvals.map(x => [x.guild_id, x]));
       const reward = await claimDashboardReward(user);
-      const payload = { user: { id: uid, username: user.user_metadata?.user_name || 'Discord user', display_name: user.user_metadata?.full_name || user.user_metadata?.name || user.user_metadata?.user_name || 'Discord user', avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null, is_bound_owner: BOUND_OWNER_IDS.has(uid) }, reward, guilds: guilds.map(g => { const factionLeader = leaderGuildIds.has(g.id); const permissions = g.owner ? [...DASHBOARD_PERMISSIONS] : [...new Set([...(grantMap.get(g.id) || []), ...(factionLeader ? ['view_dashboard', 'manage_factions'] : [])])]; return { id: g.id, name: g.name, icon_url: iconUrl(g), owner: g.owner, faction_leader: factionLeader, faction_only: factionLeader && !g.owner && !grantMap.get(g.id)?.includes('view_dashboard'), permissions, bound_installed: am.has(g.id), tos_accepted: am.get(g.id)?.tos_accepted || false, faction_status: fm.has(g.id) ? 'approved' : 'awaiting_owner_approval' }; }), request_id: requestId };
+      const payload = { user: { id: uid, username: user.user_metadata?.user_name || 'Discord user', display_name: user.user_metadata?.full_name || user.user_metadata?.name || user.user_metadata?.user_name || 'Discord user', avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null, is_bound_owner: BOUND_OWNER_IDS.has(uid), faction_leader: Boolean(globalFactionLeader), faction: globalFactionLeader?.faction || null }, reward, guilds: guilds.map(g => { const factionLeader = leaderGuildIds.has(g.id); const permissions = g.owner ? [...DASHBOARD_PERMISSIONS] : [...new Set([...(grantMap.get(g.id) || []), ...(factionLeader ? ['view_dashboard', 'manage_factions'] : [])])]; return { id: g.id, name: g.name, icon_url: iconUrl(g), owner: g.owner, faction_leader: factionLeader, faction_only: factionLeader && !g.owner && !grantMap.get(g.id)?.includes('view_dashboard'), permissions, bound_installed: am.has(g.id), tos_accepted: am.get(g.id)?.tos_accepted || false, faction_status: fm.has(g.id) ? 'approved' : 'awaiting_owner_approval' }; }), request_id: requestId };
       // Fold the initially-selected guild's overview into the bootstrap
       // response when the client already knows which guild it wants (e.g.
       // the last one picked, remembered in localStorage) - saves a whole
@@ -286,7 +301,8 @@ export default async function handler(req, res) {
       return send(res, 200, payload, requestId);
     }
 
-    const guildId = validateGuildId(String(req.query.guild_id || ''));
+    const globalFactionActions = new Set(['faction_center', 'faction_member', 'faction_application', 'faction_deposit', 'faction_shop_buy', 'faction_market_trade', 'faction_setting']);
+    const guildId = globalFactionActions.has(action) ? null : validateGuildId(String(req.query.guild_id || ''));
 
     if (action === 'overview' && req.method === 'GET') {
       try {
@@ -299,12 +315,11 @@ export default async function handler(req, res) {
     }
 
     if (action === 'faction_center' && req.method === 'GET') {
-      await authorisedFactionLeader(providerToken, guildId, uid);
-      return send(res, 200, { ...(await factionCentre(guildId, uid)), request_id: requestId }, requestId);
+      return send(res, 200, { ...(await factionCentre(uid)), request_id: requestId }, requestId);
     }
 
     if (action === 'faction_member' && req.method === 'POST') {
-      const { faction } = await authorisedFactionLeader(providerToken, guildId, uid);
+      const { faction } = await authorisedGlobalFactionLeader(uid);
       const memberAction = String(req.body?.member_action || '').toLowerCase();
       if (!['add', 'kick', 'promote', 'demote'].includes(memberAction)) return send(res, 400, { error: 'Unsupported member action.', request_id: requestId }, requestId);
       const target = validateSnowflakeOrNull(req.body?.target_user_id, 'Member Discord ID');
@@ -314,7 +329,7 @@ export default async function handler(req, res) {
     }
 
     if (action === 'faction_application' && req.method === 'POST') {
-      await authorisedFactionLeader(providerToken, guildId, uid);
+      await authorisedGlobalFactionLeader(uid);
       const reviewAction = String(req.body?.review_action || '').toLowerCase();
       if (!['approve', 'deny'].includes(reviewAction)) return send(res, 400, { error: 'Unsupported application action.', request_id: requestId }, requestId);
       const applicationId = Number(req.body?.application_id);
@@ -323,8 +338,15 @@ export default async function handler(req, res) {
       return send(res, 200, { result, request_id: requestId }, requestId);
     }
 
+    if (action === 'faction_setting' && req.method === 'POST') {
+      const { faction } = await authorisedGlobalFactionLeader(uid);
+      if (typeof req.body?.applications_open !== 'boolean') return send(res, 400, { error: 'Applications setting must be true or false.', request_id: requestId }, requestId);
+      const rows = await rest(`factions?faction_id=eq.${encodeURIComponent(faction.faction_id)}`, { method: 'PATCH', body: { applications_open: req.body.applications_open, updated_at: new Date().toISOString() } });
+      return send(res, 200, { faction: rows?.[0] || { ...faction, applications_open: req.body.applications_open }, request_id: requestId }, requestId);
+    }
+
     if (action === 'faction_deposit' && req.method === 'POST') {
-      const { faction } = await authorisedFactionLeader(providerToken, guildId, uid);
+      const { faction } = await authorisedGlobalFactionLeader(uid);
       const amount = Number(req.body?.amount);
       if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 1_000_000_000) return send(res, 400, { error: 'Deposit must be between 1 and 1,000,000,000.', request_id: requestId }, requestId);
       const result = rpcResult(await rpc('dashboard_deposit_to_faction', { p_user_id: uid, p_faction_id: faction.faction_id, p_amount: amount }));
@@ -332,7 +354,7 @@ export default async function handler(req, res) {
     }
 
     if (action === 'faction_shop_buy' && req.method === 'POST') {
-      await authorisedFactionLeader(providerToken, guildId, uid);
+      await authorisedGlobalFactionLeader(uid);
       const itemId = String(req.body?.item_id || '').trim();
       if (!itemId || itemId.length > 100) return send(res, 400, { error: 'Choose a valid shop item.', request_id: requestId }, requestId);
       const result = rpcResult(await rpc('buy_faction_shop_item', { p_buyer_user_id: uid, p_item_id: itemId }));
@@ -340,7 +362,7 @@ export default async function handler(req, res) {
     }
 
     if (action === 'faction_market_trade' && req.method === 'POST') {
-      await authorisedFactionLeader(providerToken, guildId, uid);
+      await authorisedGlobalFactionLeader(uid);
       const trade = String(req.body?.trade || '').toLowerCase(), ticker = String(req.body?.ticker || '').trim().toUpperCase(), shares = Number(req.body?.shares);
       if (!['buy', 'sell'].includes(trade) || !/^[A-Z0-9]{1,12}$/.test(ticker) || !Number.isSafeInteger(shares) || shares <= 0 || shares > 1_000_000) return send(res, 400, { error: 'Enter a valid market order.', request_id: requestId }, requestId);
       const fn = trade === 'buy' ? 'buy_faction_market_shares' : 'sell_faction_market_shares';
