@@ -40,6 +40,14 @@ for (const page of pages) {
   }
 }
 
+const dashboardRuntime = await readFile(resolve(root, 'dashboard-runtime.js'), 'utf8');
+if (/dashboard-auth-shell\\.js/.test(dashboardRuntime)) errors.push('dashboard-runtime.js: must not load a second dashboard auth controller');
+const dashboardSource = await readFile(resolve(root, 'dashboard.js'), 'utf8');
+if ((dashboardSource.match(/signInWithOAuth/g) || []).length !== 1) errors.push('dashboard.js: Discord OAuth must have exactly one owner');
+if (!dashboardSource.includes("bound_discord_oauth_started_at")) errors.push('dashboard.js: missing duplicate OAuth-start guard');
+const supabaseSource = await readFile(resolve(root, 'supabase-client.js'), 'utf8');
+if (!supabaseSource.includes('persistSession: true') || !supabaseSource.includes("storage: window.localStorage")) errors.push('supabase-client.js: remembered login must use persistent local storage');
+
 if (errors.length) { console.error(errors.join('\n')); process.exit(1); }
 console.log(`Checked ${scripts.length} JavaScript files and ${pages.length} HTML pages.`);
 
