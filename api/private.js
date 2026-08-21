@@ -24,7 +24,7 @@ const privateRest=(path,opts)=>serviceRest(PRIVATE_SUPABASE_URL,PRIVATE_SERVICE_
 async function safe(fn,fallback){try{return await fn();}catch(e){console.error('private dashboard optional query:',e?.message||e);return fallback;}}
 function sum(rows,key){return rows.reduce((n,row)=>n+Number(row?.[key]||0),0);}
 async function getEntitlement(guildId){if(!PUBLIC_SERVICE_KEY)throw new HttpError(503,'Premium access validation is not configured.');const rows=await publicRest(`premium_dashboard_guilds?select=guild_id,granted_user_id,granted_by,granted_at,active,source_grant_id,note&guild_id=eq.${guildId}&active=eq.true&limit=1`);return rows?.[0]||null;}
-async function getControl(guildId){const rows=await safe(()=>privateRest(`bound_private_build_controls?select=*&guild_id=eq.${guildId}&limit=1`),[]);const row=rows?.[0]||null;return{guild_id:guildId,modules:{...DEFAULT_MODULES,...(row?.modules||{})},currency_name:row?.currency_name||'Nugs',currency_icon:row?.currency_icon||'<a:xo_2pinkweedd:1329163451637170229>',bot_display_name:row?.bot_display_name||null,bot_avatar_url:row?.bot_avatar_url||null,command_prefix:row?.command_prefix||null};}
+async function getControl(guildId){const rows=await safe(()=>privateRest(`bound_private_build_controls?select=*&guild_id=eq.${guildId}&limit=1`),[]);const row=rows?.[0]||null;return{guild_id:guildId,modules:{...DEFAULT_MODULES,...(row?.modules||{})},currency_name:row?.currency_name||'Bonds',currency_icon:row?.currency_icon||'<a:xo_2pinkweedd:1329163451637170229>',bot_display_name:row?.bot_display_name||null,bot_avatar_url:row?.bot_avatar_url||null,command_prefix:row?.command_prefix||null};}
 
 export default async function handler(req,res){const requestId=randomUUID();try{
   if(!['GET','PATCH'].includes(req.method))return send(res,405,{error:'Method not allowed.',request_id:requestId},requestId);
@@ -33,12 +33,12 @@ export default async function handler(req,res){const requestId=randomUUID();try{
   const guild=await authorisedGuild(String(req.headers['x-discord-provider-token']||''),guildId);
   const approval=await getEntitlement(guildId);
   if(!approval)return send(res,200,{guild:{id:guild.id,name:guild.name},entitled:false,private_build:null,request_id:requestId},requestId);
-  if(!PRIVATE_SERVICE_KEY)return send(res,200,{guild:{id:guild.id,name:guild.name},entitled:true,configured:false,private_build:{display_name:guild.name,premium:true,modules:DEFAULT_MODULES,control:{modules:DEFAULT_MODULES,currency_name:'Nugs',currency_icon:'<a:xo_2pinkweedd:1329163451637170229>'},stats:{}},request_id:requestId},requestId);
+  if(!PRIVATE_SERVICE_KEY)return send(res,200,{guild:{id:guild.id,name:guild.name},entitled:true,configured:false,private_build:{display_name:guild.name,premium:true,modules:DEFAULT_MODULES,control:{modules:DEFAULT_MODULES,currency_name:'Bonds',currency_icon:'<a:xo_2pinkweedd:1329163451637170229>'},stats:{}},request_id:requestId},requestId);
 
   if(req.method==='PATCH'){
     const current=await getControl(guildId),patch=req.body||{},modules={...current.modules};
     if(patch.modules&&typeof patch.modules==='object')for(const key of Object.keys(DEFAULT_MODULES))if(typeof patch.modules[key]==='boolean')modules[key]=patch.modules[key];
-    const currencyName=patch.currency_name===undefined?current.currency_name:cleanText(patch.currency_name,24,'Nugs');
+    const currencyName=patch.currency_name===undefined?current.currency_name:cleanText(patch.currency_name,24,'Bonds');
     const currencyIcon=patch.currency_icon===undefined?current.currency_icon:cleanText(patch.currency_icon,100,'💰');
     const botDisplayName=patch.bot_display_name===undefined?current.bot_display_name:(cleanText(patch.bot_display_name,32,'')||null);
     const avatarRaw=patch.bot_avatar_url===undefined?current.bot_avatar_url:String(patch.bot_avatar_url||'').trim();if(avatarRaw&&!/^https:\/\//i.test(avatarRaw))throw new HttpError(400,'Bot avatar must be an HTTPS image URL.');
