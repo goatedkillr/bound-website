@@ -11,7 +11,7 @@ const scripts = [
   'private-dashboard.js', 'reach.js', 'safety-live.js', 'script.js', 'showcase.js',
   'supabase-client.js', 'ticket-controls.js', 'welcome-auth.js',
   'api/account.js', 'api/dashboard.js', 'api/discord-refresh.js', 'api/gag-control.js',
-  'api/kofi-webhook.js', 'api/leaderboards.js', 'api/personal-context.js',
+  'api/leaderboards.js', 'api/personal-context.js',
   'api/private.js', 'api/profile.js', 'api/reach.js', 'api/safety-stats.js', 'api/tickets.js',
 ];
 
