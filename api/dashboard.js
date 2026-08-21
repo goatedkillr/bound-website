@@ -161,7 +161,7 @@ async function sendRewardDm(userId, balance) {
     const channel = await channelResponse.json();
     const messageResponse = await fetchTimed(`https://discord.com/api/v10/channels/${channel.id}/messages`, {
       method: 'POST', headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [{ title: '10,000 global currency added', description: 'Thanks for connecting your Discord account to the Bound dashboard. Your one-time global economy reward is ready.', color: 15690692, fields: [{ name: 'New global balance', value: compactNumber(balance), inline: true }], footer: { text: 'Bound • Discord, but closer.' } }] }),
+      body: JSON.stringify({ embeds: [{ title: '10,000 Bonds added', description: 'Thanks for connecting your Discord account to the Bound dashboard. Your one-time global economy reward is ready.', color: 15690692, fields: [{ name: 'New Bonds balance', value: compactNumber(balance), inline: true }], footer: { text: 'Bound • Discord, but closer.' } }] }),
     });
     return messageResponse.ok ? 'sent' : 'failed';
   } catch { return 'failed'; }
