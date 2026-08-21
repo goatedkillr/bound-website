@@ -40,7 +40,7 @@
   }
 
   function clearStaleServerState(name='Loading server') {
-    const ids=['metricGuildStatus','metricTos','metricVerified','metricSafety','metricNugs','metricEconomyUsers','safetyOpen','safetyCages','safetyGags','safetyNetwork','economyCirculation','economyUsers','economySync'];
+    const ids=['metricGuildStatus','metricTos','metricVerified','metricSafety','metricBonds','metricEconomyUsers','safetyOpen','safetyCages','safetyGags','safetyNetwork','economyCirculation','economyUsers','economySync'];
     ids.forEach(id=>{const e=document.getElementById(id);if(e)e.textContent='…'});
     const privateArea=document.getElementById('privateBuildArea'); if(privateArea) privateArea.hidden=true;
     const noBuild=document.getElementById('privateNoBuild'); if(noBuild) noBuild.hidden=true;
@@ -77,7 +77,7 @@
     try{
       const r=await fetch('/api/leaderboards'); const d=await r.json(); if(!r.ok)throw new Error(d.error||'Could not load leaderboards');
       const render=(id,rows,suffix)=>{const el=document.getElementById(id);if(!el)return;el.innerHTML=(rows||[]).map(row=>`<div class="bound-rank"><em>#${row.rank}</em>${avatar(row)}<b>${esc(row.name)}</b><strong>${compact(row.value)} ${suffix}</strong></div>`).join('')||'<div class="empty-state">No rankings yet</div>';};
-      render('bdsmXpRanks',d.bdsm,'XP'); render('moneyRanks',d.money,'₦');
+      render('bdsmXpRanks',d.bdsm,'XP'); render('moneyRanks',d.money,'⛓');
     }catch(error){['bdsmXpRanks','moneyRanks'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerHTML='<div class="empty-state">Leaderboard unavailable</div>'});}
   }
 
