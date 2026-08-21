@@ -53,6 +53,7 @@
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&navigator.onLine){lastFailure=0;updateNetwork()}});
 
   const arm=()=>{
+    document.body.classList.add('dashboard-page');
     ensureStatus();updateNetwork();
     document.getElementById('logoutBtn')?.addEventListener('click',()=>{localStorage.removeItem('bound_discord_provider_token_backup');localStorage.removeItem('bound_discord_provider_refresh_token');localStorage.removeItem('bound_discord_admin_verified_at');localStorage.removeItem('bound_discord_provider_token_issued_at');sessionStorage.removeItem('bound_discord_provider_token');clearApiCache()},{capture:true});
     if(!document.querySelector('link[href="private-controls.css"]')){const l=document.createElement('link');l.rel='stylesheet';l.href='private-controls.css';document.head.appendChild(l)}
@@ -60,6 +61,7 @@
     if(!document.querySelector('script[src="dashboard-access.js"]')){const s=document.createElement('script');s.src='dashboard-access.js';s.defer=true;document.body.appendChild(s)}
     if(!document.querySelector('script[src="dashboard-polish.js"]')){const s=document.createElement('script');s.src='dashboard-polish.js';s.defer=true;document.body.appendChild(s)}
     if(!document.querySelector('script[src="account-ui.js"]')){const s=document.createElement('script');s.type='module';s.src='account-ui.js';document.body.appendChild(s)}
+    if(!document.querySelector('script[src="dashboard-auth-shell.js"]')){const s=document.createElement('script');s.type='module';s.src='dashboard-auth-shell.js';document.body.appendChild(s)}
     if(!document.querySelector('script[src="admin-auth-guard.js"]')){const s=document.createElement('script');s.type='module';s.src='admin-auth-guard.js';document.body.appendChild(s)}
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',arm);else arm();
