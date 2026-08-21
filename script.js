@@ -25,7 +25,7 @@ if(!document.getElementById('boundFeatureTeasers')){
       <div class="bound-teaser-grid">
         <a href="dashboard.html" class="bound-teaser-card"><span class="bound-teaser-tag">PROFILE</span><strong>Your whole Bound identity</strong><small>Owners subs RP stats achievements privacy and more in one place</small><div class="bound-teaser-ui"><i>♡</i><b>Social profile</b><em>LIVE</em></div></a>
         <a href="#features" class="bound-teaser-card"><span class="bound-teaser-tag">ROLEPLAY</span><strong>Interactions that remember you</strong><small>Curated reactions mutual stats gag styles and achievement progress</small><div class="bound-teaser-ui"><i>◎</i><b>/hug /kiss /gag</b><em>GLOBAL</em></div></a>
-        <a href="dashboard.html" class="bound-teaser-card"><span class="bound-teaser-tag">FACTIONS</span><strong>Belong to something bigger</strong><small>Faction identity Nugs progression shops applications and community competition</small><div class="bound-teaser-ui"><i>₦</i><b>Your faction</b><em>SYNCED</em></div></a>
+        <a href="dashboard.html" class="bound-teaser-card"><span class="bound-teaser-tag">FACTIONS</span><strong>Belong to something bigger</strong><small>Faction identity Bonds progression shops applications and community competition</small><div class="bound-teaser-ui"><i>⛓</i><b>Your faction</b><em>SYNCED</em></div></a>
         <a href="dashboard.html#private" class="bound-teaser-card premium"><span class="bound-teaser-tag">PRIVATE BUILDS</span><strong>Your server your version of Bound</strong><small>Custom tickets staff economy moderation subscriptions automation and more</small><div class="bound-teaser-ui"><i>✦</i><b>Server control centre</b><em>PREMIUM</em></div></a>
       </div>`;
     hero.insertAdjacentElement('afterend',teaser);
@@ -47,7 +47,7 @@ if(!document.querySelector('script[src="reach.js"]')){
 const commandData={
  social:[['/claim user','Send a consent-based ownership request.','GLOBAL'],['/profile','View your Bound profile, owners and subs.','GLOBAL'],['/gag user','Use Bound’s gag interaction with an owned sub.','SOCIAL'],['/hug user','Send a hug with interactive response buttons.','RP'],['/kiss user','Send a kiss and track mutual interaction stats.','RP']],
  safety:[['/safety-flag','Open a safety report for review.','SAFETY'],['/safeword','Trigger the configured safety isolation workflow.','TDS'],['/cage user','Contain a user in a private safety space.','TDS'],['/profile → Data','Request deletion of your stored Bound data.','PRIVACY']],
- economy:[['/balance','Check wallet and bank balances.','ECON'],['/work','Work a job to earn Nugs.','ECON'],['/heist user','Start a high-risk targeted heist.','ECON'],['/depall','Instantly move all wallet funds to the bank.','ECON'],['/shop','Browse server items, boosts and utilities.','ECON']],
+ economy:[['/balance','Check wallet and bank balances.','ECON'],['/work','Work a job to earn Bonds.','ECON'],['/heist user','Start a high-risk targeted heist.','ECON'],['/depall','Instantly move all wallet funds to the bank.','ECON'],['/shop','Browse server items, boosts and utilities.','ECON']],
  community:[['/verify-setup','Configure server verification and self roles.','ADMIN'],['/ticket setup','Build support and verification ticket panels.','ADMIN'],['/space user','Create a private staff ticket with a selected user.','STAFF'],['/staff','Open staff controls, assignments and clocking.','STAFF'],['/sticky','Create an automatically maintained sticky message.','UTILITY']]
 };
 const list=document.getElementById('command-list');
