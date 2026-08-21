@@ -19,12 +19,21 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    // OAuth is completed once by authReady below. Letting every importing
+    // script auto-detect the same one-time PKCE code creates a startup race.
+    detectSessionInUrl: false,
     flowType: 'pkce',
     storage: window.localStorage,
     storageKey: 'bound-auth-session',
   },
 });
+
+const callbackParams = new URLSearchParams(window.location.search);
+const callbackHash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+export const isAuthCallback = Boolean(
+  callbackParams.get('code') || callbackParams.get('error') ||
+  callbackParams.get('error_description') || callbackHash.get('access_token')
+);
 
 const TOKEN_KEY = 'bound_discord_provider_token';
 const TOKEN_BACKUP_KEY = 'bound_discord_provider_token_backup';
@@ -69,6 +78,49 @@ export function clearProviderTokens() {
   safeRemove(localStorage, ISSUED_KEY);
   safeRemove(localStorage, VERIFIED_KEY);
 }
+
+function clearAuthCallbackUrl() {
+  if (!isAuthCallback) return;
+  try { window.history.replaceState({}, document.title, window.location.pathname); } catch { /* ignored */ }
+}
+
+// The only auth startup path used by the site. Consumers await this promise
+// instead of independently reading the session while an OAuth code is still
+// being exchanged.
+export const authReady = (async () => {
+  const oauthError = callbackParams.get('error_description') || callbackParams.get('error');
+  if (oauthError) {
+    clearAuthCallbackUrl();
+    throw new Error(oauthError);
+  }
+
+  let session = null;
+  const code = callbackParams.get('code');
+  if (code) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    clearAuthCallbackUrl();
+    if (error) throw error;
+    session = data.session;
+  } else if (callbackHash.get('access_token') && callbackHash.get('refresh_token')) {
+    const { data, error } = await supabase.auth.setSession({
+      access_token: callbackHash.get('access_token'),
+      refresh_token: callbackHash.get('refresh_token'),
+    });
+    clearAuthCallbackUrl();
+    if (error) throw error;
+    session = data.session;
+  } else {
+    session = (await supabase.auth.getSession()).data.session;
+  }
+
+  if (session?.provider_token) {
+    storeProviderTokens({
+      provider_token: session.provider_token,
+      provider_refresh_token: session.provider_refresh_token,
+    });
+  }
+  return session || null;
+})();
 
 let refreshInFlight = null;
 
