@@ -54,7 +54,7 @@
       if(!session?.access_token)throw new Error('Sign in to view ticket access');
       const headers={Authorization:`Bearer ${session.access_token}`};
       const provider=providerToken();if(provider)headers['X-Discord-Provider-Token']=provider;
-      const response=await fetch(`/api/ticket-preview?guild_id=${encodeURIComponent(guildId)}`,{headers});
+      const response=await fetch(`/api/tickets?mode=preview&guild_id=${encodeURIComponent(guildId)}`,{headers});
       const data=await response.json().catch(()=>({}));
       if(!response.ok)throw new Error(data.error||'Could not load ticket access');
       const stats=data.stats||{};
