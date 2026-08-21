@@ -10,7 +10,7 @@ async function request(action,{method='GET',body}={}){
   const session=await authReady;
   const provider=await ensureFreshProviderToken();
   if(!session?.access_token||!provider)throw new Error('Your Discord session is not ready.');
-  const response=await fetch(`/api/dashboard?action=${encodeURIComponent(action)}&guild_id=${encodeURIComponent(guildId())}`,{method,headers:{Authorization:`Bearer ${session.access_token}`,'X-Discord-Provider-Token':provider,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+  const response=await fetch(`/api/dashboard?action=${encodeURIComponent(action)}`,{method,headers:{Authorization:`Bearer ${session.access_token}`,'X-Discord-Provider-Token':provider,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
   const payload=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(payload.error||`Faction request failed (${response.status}).`);
   return payload;
@@ -30,10 +30,11 @@ function memberActions(member,leaderId){
 
 function render(){
   const root=$('factionLeaderCentre'),body=$('factionCentreBody');if(!root||!body||!data)return;
+  $('view-economy')?.classList.add('global-faction-mode');
   root.hidden=false;
   const f=data.faction||{},items=data.shop?.items||[],companies=data.market?.companies||[],holdings=data.portfolio?.holdings||data.portfolio?.companies||[],apps=data.applications||[];
   body.innerHTML=`
-    <div class="faction-stat-grid"><article><small>FACTION TREASURY</small><strong>${fmt(f.money)} ₦</strong><span>${esc(f.faction_name||'Faction')}</span></article><article><small>YOUR GLOBAL BALANCE</small><strong>${fmt(data.personal_balance)}</strong><span>Available to deposit</span></article><article><small>MEMBERS</small><strong>${fmt(data.members?.length)}</strong><span>Limit ${fmt(f.maximum_members||20)}</span></article><article><small>MARKET VALUE</small><strong>${fmt(data.portfolio?.portfolio_value)} ₦</strong><span>${fmt(data.portfolio?.companies_owned)} companies</span></article></div>
+    <div class="faction-stat-grid"><article><small>FACTION TREASURY</small><strong>${fmt(f.money)} ₦</strong><span>${esc(f.faction_name||'Faction')}</span></article><article><small>YOUR GLOBAL BALANCE</small><strong>${fmt(data.personal_balance)}</strong><span>Available to deposit</span></article><article><small>MEMBERS</small><strong>${fmt(data.members?.length)}</strong><span>Limit ${fmt(f.maximum_members||20)}</span></article><article><small>APPLICATIONS</small><strong>${f.applications_open?'Open':'Closed'}</strong><button id="factionApplicationsToggle">${f.applications_open?'Close applications':'Open applications'}</button></article></div>
     <div class="faction-control-grid">
       <article class="faction-card"><div class="faction-card-title"><div><small>TREASURY</small><h3>Deposit holdings</h3></div></div><p>Move your global balance into the faction treasury at a 1:1 rate. Deposits cannot be reversed from the dashboard.</p><div class="faction-inline"><input id="factionDepositAmount" type="number" min="1" step="1" placeholder="Amount"><button id="factionDeposit">Deposit</button></div><div class="faction-history">${(data.deposits||[]).map(x=>`<div><span>${esc(x.display_name)}</span><b>+${fmt(x.amount)} ₦</b></div>`).join('')||'<small>No dashboard deposits yet.</small>'}</div></article>
       <article class="faction-card"><div class="faction-card-title"><div><small>MEMBERS</small><h3>Faction roster</h3></div><div class="faction-inline compact"><input id="factionAddUser" inputmode="numeric" placeholder="Discord user ID"><button id="factionAddMember">Add</button></div></div><div class="faction-member-list">${(data.members||[]).map(m=>`<div class="faction-member"><span class="mini-avatar">${esc((m.display_name||'?')[0])}</span><div><b>${esc(m.display_name)}</b><small>${esc(m.faction_role)} · ${fmt(m.balance)} global</small></div>${memberActions(m,data.leader_user_id)}</div>`).join('')}</div></article>
@@ -49,6 +50,7 @@ async function mutate(button,action,body){try{setBusy(button,true);await request
 function bind(){
   $('factionDeposit')?.addEventListener('click',e=>mutate(e.currentTarget,'faction_deposit',{amount:Number($('factionDepositAmount')?.value)}));
   $('factionAddMember')?.addEventListener('click',e=>mutate(e.currentTarget,'faction_member',{member_action:'add',target_user_id:$('factionAddUser')?.value.trim()}));
+  $('factionApplicationsToggle')?.addEventListener('click',e=>mutate(e.currentTarget,'faction_setting',{applications_open:!Boolean(data?.faction?.applications_open)}));
   document.querySelectorAll('[data-member-action]').forEach(b=>b.addEventListener('click',()=>mutate(b,'faction_member',{member_action:b.dataset.memberAction,target_user_id:b.dataset.user})));
   document.querySelectorAll('[data-application-action]').forEach(b=>b.addEventListener('click',()=>mutate(b,'faction_application',{review_action:b.dataset.applicationAction,application_id:Number(b.dataset.application)})));
   document.querySelectorAll('[data-shop-item]').forEach(b=>b.addEventListener('click',()=>mutate(b,'faction_shop_buy',{item_id:b.dataset.shopItem})));
@@ -57,8 +59,8 @@ function bind(){
 
 async function load(force=false){
   ensureShell();const root=$('factionLeaderCentre'),body=$('factionCentreBody');if(!root||loading||(!force&&data))return;
-  if(!guildId())return;loading=true;root.hidden=false;if(body)body.innerHTML='<div class="faction-loading">Syncing the live faction economy…</div>';
-  try{data=await request('faction_center');render()}catch(error){root.hidden=true;data=null;console.info('Faction leader controls unavailable:',error.message)}finally{loading=false}
+  loading=true;root.hidden=false;if(body)body.innerHTML='<div class="faction-loading">Syncing the live global faction economy…</div>';
+  try{data=await request('faction_center');render()}catch(error){root.hidden=true;$('view-economy')?.classList.remove('global-faction-mode');data=null;console.info('Faction leader controls unavailable:',error.message)}finally{loading=false}
 }
 
 window.addEventListener('bound:guild-change',()=>{data=null;if($('view-economy')?.classList.contains('active'))load(true)});
