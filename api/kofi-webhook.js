@@ -63,6 +63,18 @@ function parsePayload(req) {
   return body;
 }
 
+function bodySize(req) {
+  const body = req.body ?? '';
+  return Buffer.byteLength(typeof body === 'string' ? body : JSON.stringify(body));
+}
+
+// The verification token proves the webhook is genuine, but it must never be
+// copied into the payment audit row along with the rest of Ko-fi's payload.
+function safeRawPayload(payload) {
+  const { verification_token: _verificationToken, ...safePayload } = payload;
+  return safePayload;
+}
+
 function clean(value, max = 500) {
   const text = String(value ?? '').trim();
   return text ? text.slice(0, max) : null;
@@ -199,6 +211,7 @@ async function syncSubscription(discordUserId, tier, messageId, payload) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { ok: false, error: 'Method not allowed' });
   if (!KOFI_VERIFICATION_TOKEN) return json(res, 503, { ok: false, error: 'Ko-fi is not configured' });
+  if (bodySize(req) > 64_000) return json(res, 413, { ok: false, error: 'Webhook payload is too large' });
 
   try {
     const payload = parsePayload(req);
@@ -250,7 +263,7 @@ export default async function handler(req, res) {
       is_first_subscription_payment: Boolean(payload.is_first_subscription_payment),
       transaction_id: clean(payload.kofi_transaction_id ?? payload.transaction_id, 200),
       payment_status: paymentStatus,
-      raw_payload: payload,
+      raw_payload: safeRawPayload(payload),
       received_at: new Date().toISOString(),
     };
 
@@ -280,3 +293,4 @@ export default async function handler(req, res) {
     return json(res, 500, { ok: false, error: 'Webhook processing failed' });
   }
 }
+
