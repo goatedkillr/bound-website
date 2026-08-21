@@ -6,7 +6,12 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const BOUND_OWNER_IDS = new Set(['444659348854013955']);
 const SNOWFLAKE = /^\d{17,20}$/;
 const REQUEST_TIMEOUT_MS = 12_000;
-const DISCORD_CACHE_MS = 20_000;
+// A guild's member/permission list rarely changes within a single dashboard
+// session, and this cache is only ever consulted for the currently signed-in
+// user's own token, so a longer window trades a small amount of staleness
+// for far fewer redundant round trips to Discord's API (every guild-scoped
+// action calls discordGuilds() to re-check permissions).
+const DISCORD_CACHE_MS = 120_000;
 const rateBuckets = new Map();
 const discordCache = new Map();
 
@@ -99,9 +104,23 @@ async function patchOrInsert(table, guildId, patch, base = {}) {
 }
 async function factionForGuild(guildId) {
   const approvals = await safe(() => rest(`faction_server_approvals?select=*&guild_id=eq.${guildId}&enabled=eq.true`), []);
-  if (approvals.length === 1) { const rows = await safe(() => rest(`factions?select=*&faction_id=eq.${approvals[0].faction_id}`), []); if (rows.length === 1) return { status: 'approved', approved: true, faction: rows[0], approval: approvals[0], matches: 1 }; }
-  const candidates = await safe(() => rest(`factions?select=faction_id,faction_name,home_guild_id&home_guild_id=eq.${guildId}&order=created_at.asc`), []);
-  return { status: 'awaiting_owner_approval', approved: false, faction: null, approval: null, matches: candidates.length, candidates };
+  if (approvals.length === 1) { const rows = await safe(() => rest(`factions?select=*&faction_id=eq.${approvals[0].faction_id}`), []); if (rows.length === 1) return { status: 'approved', approved: true, faction: rows[0], display_faction: rows[0], approval: approvals[0], matches: 1 }; }
+  const candidates = await safe(() => rest(`factions?select=*&home_guild_id=eq.${guildId}&order=created_at.asc`), []);
+  // Not yet approved as the guild's canonical faction, but if there is exactly
+  // one unambiguous faction linked to this server we can still show its real
+  // stats read-only - "Locked" should mean "we don't know", not "we know but
+  // won't tell you". Writes (settings toggles etc.) still require `approved`.
+  const displayFaction = candidates.length === 1 ? candidates[0] : null;
+  return { status: 'awaiting_owner_approval', approved: false, faction: null, display_faction: displayFaction, approval: null, matches: candidates.length, candidates, ambiguous: candidates.length > 1 };
+}
+
+async function buildOverview(guild, guildId) {
+  const factionState = await factionForGuild(guildId), fid = factionState.display_faction?.faction_id;
+  const [settings, activation, verify, safetyGuild, safetyCases, cages, gags, balances, activity, gagConfig, members, upgrades, portfolio, heistStats, userCache] = await Promise.all([
+    safe(() => rest(`guild_settings?select=*&guild_id=eq.${guildId}`), []), safe(() => rest(`bound_guild_activation?select=*&guild_id=eq.${guildId}`), []), safe(() => rest(`verify_settings?select=*&guild_id=eq.${guildId}`), []), safe(() => rest(`safety_guilds?select=*&guild_id=eq.${guildId}`), []), safe(() => rest(`safety_cases?select=case_id,case_reference,reported_user_id,requested_flag_type,status,reason,created_at&reporter_guild_id=eq.${guildId}&order=created_at.desc&limit=10`), []), safe(() => rest(`ownership_cages?select=guild_id,sub_id,owner_id,cage_channel_id,created_at&guild_id=eq.${guildId}`), []), safe(() => rest(`bdsm_active_gags?select=gagged_user_id,owner_id,gag_style,expires_at,started_at&guild_id=eq.${guildId}&active=eq.true`), []), safe(() => rest('user_balances?select=user_id,money'), []), safe(() => rest(`game_activity_history?select=user_id,activity_type,money_earned,created_at&guild_id=eq.${guildId}&order=created_at.desc&limit=8`), []), safe(() => rest(`bdsm_safety_config?select=*&guild_id=eq.${guildId}`), []), fid ? safe(() => rest(`faction_members?select=user_id,faction_role,joined_at&faction_id=eq.${fid}`), []) : Promise.resolve([]), fid ? safe(() => rest(`faction_upgrades?select=*&faction_id=eq.${fid}`), []) : Promise.resolve([]), fid ? safe(() => rest(`faction_stock_portfolios?select=*&faction_id=eq.${fid}`), []) : Promise.resolve([]), fid ? safe(() => rest(`faction_heist_statistics?select=*&faction_id=eq.${fid}`), []) : Promise.resolve([]), safe(() => rest('bdsm_discord_user_cache?select=user_id,display_name,avatar_url'), []),
+  ]);
+  const total = balances.reduce((s, r) => s + Number(r.money || 0), 0), pending = safetyCases.filter(x => ['pending', 'needs_evidence'].includes(x.status)), cm = new Map(userCache.map(x => [x.user_id, x])), bm = new Map(balances.map(x => [x.user_id, Number(x.money || 0)])), memberRows = members.map(m => ({ ...m, display_name: cm.get(m.user_id)?.display_name || m.user_id, avatar_url: cm.get(m.user_id)?.avatar_url || null, balance: bm.get(m.user_id) || 0 })).sort((a, b) => b.balance - a.balance);
+  return { guild: { id: guild.id, name: guild.name, icon_url: iconUrl(guild) }, settings: settings[0] || { guild_id: guildId, prefix: '£' }, activation: activation[0] || null, verification: verify[0] || null, safety: { config: safetyGuild[0] || null, cases: safetyCases, pending: pending.length, cages, active_gags: gags, gag_config: gagConfig[0] || { guild_id: guildId, blocked_channel_ids: [], log_channel_id: null } }, faction: { ...factionState, members: memberRows, upgrades, portfolio, heist_stats: heistStats[0] || null }, economy: { total_nugs: total, total_nugs_display: compactNumber(total), users: balances.length }, activity };
 }
 
 export default async function handler(req, res) {
@@ -129,19 +148,29 @@ export default async function handler(req, res) {
         approvals = await safe(() => rest(`faction_server_approvals?select=guild_id,faction_id,enabled&guild_id=in.(${ids.join(',')})&enabled=eq.true`), []);
       }
       const am = new Map(activation.map(x => [x.guild_id, x])), fm = new Map(approvals.map(x => [x.guild_id, x]));
-      return send(res, 200, { user: { id: uid, username: user.user_metadata?.user_name || 'Discord user', display_name: user.user_metadata?.full_name || user.user_metadata?.name || user.user_metadata?.user_name || 'Discord user', avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null, is_bound_owner: BOUND_OWNER_IDS.has(uid) }, guilds: guilds.map(g => ({ id: g.id, name: g.name, icon_url: iconUrl(g), owner: g.owner, bound_installed: am.has(g.id), tos_accepted: am.get(g.id)?.tos_accepted || false, faction_status: fm.has(g.id) ? 'approved' : 'awaiting_owner_approval' })), request_id: requestId }, requestId);
+      const payload = { user: { id: uid, username: user.user_metadata?.user_name || 'Discord user', display_name: user.user_metadata?.full_name || user.user_metadata?.name || user.user_metadata?.user_name || 'Discord user', avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null, is_bound_owner: BOUND_OWNER_IDS.has(uid) }, guilds: guilds.map(g => ({ id: g.id, name: g.name, icon_url: iconUrl(g), owner: g.owner, bound_installed: am.has(g.id), tos_accepted: am.get(g.id)?.tos_accepted || false, faction_status: fm.has(g.id) ? 'approved' : 'awaiting_owner_approval' })), request_id: requestId };
+      // Fold the initially-selected guild's overview into the bootstrap
+      // response when the client already knows which guild it wants (e.g.
+      // the last one picked, remembered in localStorage) - saves a whole
+      // extra request+serverless round trip on first paint. Best-effort: a
+      // failure here just means the client falls back to its own separate
+      // overview request, same as before this existed.
+      const wantGuildId = String(req.query.guild_id || '');
+      if (wantGuildId && SNOWFLAKE.test(wantGuildId)) {
+        const targetGuild = guilds.find(g => g.id === wantGuildId);
+        if (targetGuild) {
+          try { payload.overview = await buildOverview(targetGuild, wantGuildId); }
+          catch (e) { console.error('Bootstrap inline overview failed:', e?.message || e); }
+        }
+      }
+      return send(res, 200, payload, requestId);
     }
 
     const guildId = validateGuildId(String(req.query.guild_id || ''));
     const guild = await authorisedGuild(providerToken, guildId);
 
     if (action === 'overview' && req.method === 'GET') {
-      const factionState = await factionForGuild(guildId), fid = factionState.faction?.faction_id;
-      const [settings, activation, verify, safetyGuild, safetyCases, cages, gags, balances, activity, gagConfig, members, upgrades, portfolio, heistStats, userCache] = await Promise.all([
-        safe(() => rest(`guild_settings?select=*&guild_id=eq.${guildId}`), []), safe(() => rest(`bound_guild_activation?select=*&guild_id=eq.${guildId}`), []), safe(() => rest(`verify_settings?select=*&guild_id=eq.${guildId}`), []), safe(() => rest(`safety_guilds?select=*&guild_id=eq.${guildId}`), []), safe(() => rest(`safety_cases?select=case_id,case_reference,reported_user_id,requested_flag_type,status,reason,created_at&reporter_guild_id=eq.${guildId}&order=created_at.desc&limit=10`), []), safe(() => rest(`ownership_cages?select=guild_id,sub_id,owner_id,cage_channel_id,created_at&guild_id=eq.${guildId}`), []), safe(() => rest(`bdsm_active_gags?select=gagged_user_id,owner_id,gag_style,expires_at,started_at&guild_id=eq.${guildId}&active=eq.true`), []), safe(() => rest('user_balances?select=user_id,money'), []), safe(() => rest(`game_activity_history?select=user_id,activity_type,money_earned,created_at&guild_id=eq.${guildId}&order=created_at.desc&limit=8`), []), safe(() => rest(`bdsm_safety_config?select=*&guild_id=eq.${guildId}`), []), fid ? safe(() => rest(`faction_members?select=user_id,faction_role,joined_at&faction_id=eq.${fid}`), []) : Promise.resolve([]), fid ? safe(() => rest(`faction_upgrades?select=*&faction_id=eq.${fid}`), []) : Promise.resolve([]), fid ? safe(() => rest(`faction_stock_portfolios?select=*&faction_id=eq.${fid}`), []) : Promise.resolve([]), fid ? safe(() => rest(`faction_heist_statistics?select=*&faction_id=eq.${fid}`), []) : Promise.resolve([]), safe(() => rest('bdsm_discord_user_cache?select=user_id,display_name,avatar_url'), []),
-      ]);
-      const total = balances.reduce((s, r) => s + Number(r.money || 0), 0), pending = safetyCases.filter(x => ['pending', 'needs_evidence'].includes(x.status)), cm = new Map(userCache.map(x => [x.user_id, x])), bm = new Map(balances.map(x => [x.user_id, Number(x.money || 0)])), memberRows = members.map(m => ({ ...m, display_name: cm.get(m.user_id)?.display_name || m.user_id, avatar_url: cm.get(m.user_id)?.avatar_url || null, balance: bm.get(m.user_id) || 0 })).sort((a, b) => b.balance - a.balance);
-      return send(res, 200, { guild: { id: guild.id, name: guild.name, icon_url: iconUrl(guild) }, settings: settings[0] || { guild_id: guildId, prefix: '£' }, activation: activation[0] || null, verification: verify[0] || null, safety: { config: safetyGuild[0] || null, cases: safetyCases, pending: pending.length, cages, active_gags: gags, gag_config: gagConfig[0] || { guild_id: guildId, blocked_channel_ids: [], log_channel_id: null } }, faction: { ...factionState, members: memberRows, upgrades, portfolio, heist_stats: heistStats[0] || null }, economy: { total_nugs: total, total_nugs_display: compactNumber(total), users: balances.length }, activity, request_id: requestId }, requestId);
+      return send(res, 200, { ...(await buildOverview(guild, guildId)), request_id: requestId }, requestId);
     }
 
     if (action === 'settings' && req.method === 'PATCH') {

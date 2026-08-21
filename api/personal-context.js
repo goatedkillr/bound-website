@@ -78,9 +78,32 @@ export default async function handler(req, res) {
 
     const membership = membershipRows?.[0] || null;
     let faction = null;
+    let factionsBrowse = null;
     if (membership?.faction_id) {
       const rows = await rest(`factions?select=faction_id,faction_name,faction_level,faction_xp,power,money,home_guild_id&faction_id=eq.${encodeURIComponent(String(membership.faction_id))}&limit=1`);
       if (rows?.[0]) faction = { ...rows[0], faction_role: membership.faction_role || 'member', joined_at: membership.joined_at || null };
+    } else {
+      // Not in a faction - give the dashboard enough to render a browse list
+      // instead of just "apply in Discord": every faction's public stats,
+      // plus a member count tallied from faction_members (small tables, safe
+      // to pull in full rather than needing a dedicated count RPC).
+      const [allFactions, allMembers] = await Promise.all([
+        rest('factions?select=faction_id,faction_name,faction_level,power,money,home_guild_id&order=power.desc'),
+        rest('faction_members?select=faction_id'),
+      ]);
+      const counts = new Map();
+      for (const row of allMembers || []) {
+        const key = String(row.faction_id);
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+      factionsBrowse = (allFactions || []).map(f => ({
+        faction_id: f.faction_id,
+        faction_name: f.faction_name,
+        faction_level: f.faction_level,
+        power: f.power,
+        money: f.money,
+        member_count: counts.get(String(f.faction_id)) || 0,
+      }));
     }
 
     return send(res, 200, {
@@ -91,6 +114,7 @@ export default async function handler(req, res) {
       },
       safety_team: safetyTeam,
       faction,
+      factions_browse: factionsBrowse,
       request_id: requestId,
     }, requestId);
   } catch (error) {
