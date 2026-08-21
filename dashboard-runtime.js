@@ -39,18 +39,11 @@
     const url=requestUrl(input);const same=url.startsWith('/api/')||url.startsWith(`${location.origin}/api/`);if(!same)return originalFetch(input,init);
     const method=String(init.method||(typeof input!=='string'?input?.method:'')||'GET').toUpperCase();
     if(method!=='GET'){clearApiCache();return doApiFetch(input,init,false)}
-
     const key=cacheKey(input,init);const cached=responseCache.get(key);
     if(cached&&Date.now()-cached.at<CACHE_MS)return cloneCached(cached);
     if(pendingGets.has(key))return (await pendingGets.get(key)).clone();
-
-    const task=(async()=>{
-      const response=await doApiFetch(input,init,true);
-      if(response.ok){const body=await response.clone().text();responseCache.set(key,{at:Date.now(),body,status:response.status,statusText:response.statusText,headers:[...response.headers.entries()]})}
-      return response;
-    })();
-    pendingGets.set(key,task);
-    try{return (await task).clone()}finally{pendingGets.delete(key)}
+    const task=(async()=>{const response=await doApiFetch(input,init,true);if(response.ok){const body=await response.clone().text();responseCache.set(key,{at:Date.now(),body,status:response.status,statusText:response.statusText,headers:[...response.headers.entries()]})}return response})();
+    pendingGets.set(key,task);try{return (await task).clone()}finally{pendingGets.delete(key)}
   }
 
   window.fetch=resilientApiFetch;
@@ -61,12 +54,13 @@
 
   const arm=()=>{
     ensureStatus();updateNetwork();
-    document.getElementById('logoutBtn')?.addEventListener('click',()=>{localStorage.removeItem('bound_discord_provider_token_backup');localStorage.removeItem('bound_discord_provider_refresh_token');sessionStorage.removeItem('bound_discord_provider_token');clearApiCache()},{capture:true});
+    document.getElementById('logoutBtn')?.addEventListener('click',()=>{localStorage.removeItem('bound_discord_provider_token_backup');localStorage.removeItem('bound_discord_provider_refresh_token');localStorage.removeItem('bound_discord_admin_verified_at');sessionStorage.removeItem('bound_discord_provider_token');clearApiCache()},{capture:true});
     if(!document.querySelector('link[href="private-controls.css"]')){const l=document.createElement('link');l.rel='stylesheet';l.href='private-controls.css';document.head.appendChild(l)}
     if(!document.querySelector('script[src="private-controls.js"]')){const s=document.createElement('script');s.src='private-controls.js';s.defer=true;document.body.appendChild(s)}
     if(!document.querySelector('script[src="dashboard-access.js"]')){const s=document.createElement('script');s.src='dashboard-access.js';s.defer=true;document.body.appendChild(s)}
     if(!document.querySelector('script[src="dashboard-polish.js"]')){const s=document.createElement('script');s.src='dashboard-polish.js';s.defer=true;document.body.appendChild(s)}
     if(!document.querySelector('script[src="account-ui.js"]')){const s=document.createElement('script');s.type='module';s.src='account-ui.js';document.body.appendChild(s)}
+    if(!document.querySelector('script[src="admin-auth-guard.js"]')){const s=document.createElement('script');s.type='module';s.src='admin-auth-guard.js';document.body.appendChild(s)}
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',arm);else arm();
 })();
