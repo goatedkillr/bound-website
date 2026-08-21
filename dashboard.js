@@ -25,7 +25,7 @@ function setSwitchState(btn,state){if(!btn)return;btn.classList.toggle('on',!!st
 
 function buildGeneric(key){const v=generic[key],el=$(`view-${key}`);if(!v||!el||el.dataset.ready||el.dataset.finished==='1')return;el.innerHTML=`<div class="generic-card"><span class="eyebrow">BOUND CONTROL CENTRE</span><h2>${escapeHtml(v[0])}</h2><p>${escapeHtml(v[1])}</p><div class="generic-feature-grid">${v[2].map(f=>`<div class="generic-feature"><span>${f[0]}</span><b>${escapeHtml(f[1])}</b><small>${escapeHtml(f[2])}</small></div>`).join('')}</div></div>`;el.dataset.ready='1';}
 function setSidebarOpen(open){const sidebar=$('sidebar'),menu=$('menuBtn'),backdrop=$('sidebarBackdrop');sidebar?.classList.toggle('open',open);backdrop?.classList.toggle('open',open);document.body.classList.toggle('sidebar-open',open);menu?.classList.toggle('is-open',open);menu?.setAttribute('aria-expanded',String(open));if(menu){menu.setAttribute('aria-label',open?'Close dashboard menu':'Open dashboard menu');const icon=menu.querySelector('span');if(icon)icon.textContent=open?'×':'☰';}}
-function showView(key){if(generic[key])buildGeneric(key);document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));$(`view-${key}`)?.classList.add('active');document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));if($('pageTitle'))$('pageTitle').textContent=pages[key]||'Dashboard';if(key==='settings'&&currentGuild()?.owner)void loadPermissionGrants();setSidebarOpen(false);window.scrollTo({top:0,behavior:'smooth'});}
+function showView(key){if(currentGuild()?.faction_only&&!['economy','account'].includes(key))key='economy';if(generic[key])buildGeneric(key);document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));$(`view-${key}`)?.classList.add('active');document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===key));if($('pageTitle'))$('pageTitle').textContent=pages[key]||'Dashboard';if(key==='settings'&&currentGuild()?.owner)void loadPermissionGrants();setSidebarOpen(false);window.scrollTo({top:0,behavior:'smooth'});}
 document.querySelectorAll('.nav-item').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
 document.querySelectorAll('[data-jump]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.jump)));
 $('menuBtn')?.addEventListener('click',()=>setSidebarOpen(!$('sidebar')?.classList.contains('open')));
@@ -112,6 +112,8 @@ async function bootstrap(){
       if(g){if($('serverName'))$('serverName').textContent=g.name;applyServerIcon($('serverIcon'),g.icon_url,g.name)}
       applyOverview(d.overview);
       applyDashboardAccess();
+      window.dispatchEvent(new CustomEvent('bound:guild-change',{detail:{guild:g}}));
+      if(g?.faction_only)showView('economy');
       if(currentGuild()?.owner)await loadPermissionGrants();
     }else{
       await chooseGuild(selectedGuildId,false);
@@ -123,7 +125,7 @@ function renderGuildPicker(){const p=$('serverPicker');if(!p)return;if(!managedG
 function toggleServerPicker(){const p=$('serverPicker');if(p)p.hidden=!p.hidden}
 $('serverPickerBtn')?.addEventListener('click',()=>session?toggleServerPicker():signInWithDiscord());
 document.addEventListener('click',e=>{const p=$('serverPicker');if(!p||p.hidden)return;if(!p.contains(e.target)&&e.target!==$('serverPickerBtn')&&e.target!==$('loginBtn'))p.hidden=true});
-async function chooseGuild(id,close=true){selectedGuildId=id;localStorage.setItem('bound_dashboard_guild',id);if(close&&$('serverPicker'))$('serverPicker').hidden=true;renderGuildPicker();const g=managedGuilds.find(x=>x.id===id);if(g){if($('serverName'))$('serverName').textContent=g.name;applyServerIcon($('serverIcon'),g.icon_url,g.name)}applyDashboardAccess();await Promise.all([loadOverview(),g?.owner?loadPermissionGrants():Promise.resolve()]);}
+async function chooseGuild(id,close=true){selectedGuildId=id;localStorage.setItem('bound_dashboard_guild',id);if(close&&$('serverPicker'))$('serverPicker').hidden=true;renderGuildPicker();const g=managedGuilds.find(x=>x.id===id);if(g){if($('serverName'))$('serverName').textContent=g.name;applyServerIcon($('serverIcon'),g.icon_url,g.name)}applyDashboardAccess();window.dispatchEvent(new CustomEvent('bound:guild-change',{detail:{guild:g}}));if(g?.faction_only)showView('economy');await Promise.all([loadOverview(),g?.owner?loadPermissionGrants():Promise.resolve()]);}
 
 function currentGuild(){return managedGuilds.find(g=>g.id===selectedGuildId)||null}
 function can(permission){const g=currentGuild();return Boolean(g?.owner||g?.permissions?.includes(permission))}
@@ -132,6 +134,7 @@ function applyDashboardAccess(){
  if(card)card.hidden=!owner;
  document.querySelectorAll('[data-requires-permission]').forEach(el=>{const allowed=can(el.dataset.requiresPermission);el.disabled=!allowed;el.title=allowed?'':'The server owner has not granted this permission.'});
  document.body.dataset.dashboardOwner=String(owner);
+ document.body.classList.toggle('faction-only',Boolean(g?.faction_only));
 }
 
 function ensureConfigPanels(){
