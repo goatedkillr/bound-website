@@ -60,3 +60,6 @@ document.querySelectorAll('.reveal').forEach(el=>observer.observe(el));
 
 const card=document.querySelector('.tilt-card');
 if(card && matchMedia('(pointer:fine)').matches){card.addEventListener('mousemove',e=>{const r=card.getBoundingClientRect();const x=(e.clientX-r.left)/r.width-.5;const y=(e.clientY-r.top)/r.height-.5;card.style.transform=`perspective(900px) rotateY(${x*5}deg) rotateX(${-y*5}deg)`;});card.addEventListener('mouseleave',()=>card.style.transform='');}
+
+// The compact Bound login is an ES module because it talks directly to Supabase Auth.
+if(!document.querySelector('script[src="account-ui.js"]')){const account=document.createElement('script');account.type='module';account.src='account-ui.js';document.body.appendChild(account);}
