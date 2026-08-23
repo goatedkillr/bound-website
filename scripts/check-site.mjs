@@ -3,7 +3,7 @@ import { dirname, extname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const root = resolve(import.meta.dirname, '..');
-const pages = ['index.html', 'dashboard.html', 'privacy.html', 'terms.html'];
+const pages = ['index.html', 'dashboard.html'];
 const scripts = [
   'account-ui.js', 'admin-auth-guard.js', 'auth-bridge.js', 'dashboard-access.js',
   'dashboard-auth-shell.js', 'dashboard-config.js', 'dashboard-finish.js',
