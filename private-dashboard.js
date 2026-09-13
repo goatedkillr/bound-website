@@ -110,14 +110,6 @@
   const compact = n => { n=Number(n||0); return n>=1e6?`${(n/1e6).toFixed(1)}M`:n>=1e3?`${(n/1e3).toFixed(1)}K`:String(n); };
   function selectedGuildId(){ return localStorage.getItem('bound_dashboard_guild') || ''; }
   function selectedGuildName(){ return document.getElementById('serverName')?.textContent?.trim() || 'Choose a server'; }
-  function authTokenFromStorage(){
-    for (let i=0;i<localStorage.length;i++) {
-      const key=localStorage.key(i)||'';
-      if (!key.startsWith('sb-') || !key.endsWith('-auth-token')) continue;
-      try { const raw=JSON.parse(localStorage.getItem(key)||'null'); const token=raw?.access_token || raw?.currentSession?.access_token; if(token) return token; } catch {}
-    }
-    return null;
-  }
   function providerToken(){ return sessionStorage.getItem('bound_discord_provider_token') || localStorage.getItem('bound_discord_provider_token_backup') || null; }
   function setBanner(name, status, mode='loading') {
     const nameEl=document.getElementById('privateServerName'), statusEl=document.getElementById('privateBuildStatus'), icon=document.getElementById('privateServerIcon');
@@ -154,10 +146,10 @@
     const guildId=selectedGuildId(), name=selectedGuildName();
     if(!guildId){ renderNoBuild(name,true); setBanner(name,'CHOOSE A SERVER','none'); return; }
     setBanner(name,'CHECKING PRIVATE BUILD','loading');
-    const access=authTokenFromStorage(), provider=providerToken();
-    if(!access || !provider){ renderNoBuild(name,false); return; }
+    const provider=providerToken();
+    if(!provider){ renderNoBuild(name,false); return; }
     try {
-      const r=await fetch(`/api/private?guild_id=${encodeURIComponent(guildId)}`,{headers:{Authorization:`Bearer ${access}`,'X-Discord-Provider-Token':provider}});
+      const r=await fetch(`/api/private?guild_id=${encodeURIComponent(guildId)}`,{headers:{'X-Discord-Provider-Token':provider}});
       const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||`Private dashboard failed (${r.status})`);
       if(d.private_build) renderBuild(d.private_build,d.guild?.name||name); else renderNoBuild(d.guild?.name||name,d.configured!==false);
     } catch(e){ console.error(e); renderNoBuild(name,false); }

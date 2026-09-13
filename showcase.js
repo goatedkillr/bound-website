@@ -1,11 +1,10 @@
-import { supabase } from './supabase-client.js';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
 const fmt=n=>new Intl.NumberFormat('en-GB').format(Number(n||0));
 const mins=s=>fmt(Math.round(Number(s||0)/60));
 const iconFor=a=>({hug:'♡',kiss:'✦',bite:'◇',cuddle:'∞',headpat:'⌁',pat:'⌁',poke:'•',slap:'⚡',snuggle:'☾',tickle:'✧',handhold:'⌘',fistbump:'◆',bonk:'◈'}[a]||'♡');
 const label=a=>String(a||'').replaceAll('_',' ').replace(/\b\w/g,m=>m.toUpperCase());
 let data=null,loading=null;
-async function load(){if(data)return data;if(loading)return loading;loading=(async()=>{const{data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw new Error('Sign in required.');const r=await fetch('/api/profile',{headers:{Authorization:`Bearer ${session.access_token}`}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not load Bound profile.');data=d;return d})().finally(()=>loading=null);return loading;}
+async function load(){if(data)return data;if(loading)return loading;loading=(async()=>{const r=await fetch('/api/profile');const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not load Bound profile.');data=d;return d})().finally(()=>loading=null);return loading;}
 function avatar(user,size='lg'){return user?.avatar_url?`<img class="show-avatar ${size}" src="${esc(user.avatar_url)}" alt="${esc(user.display_name)}">`:`<span class="show-avatar ${size} fallback">${esc((user?.display_name||'B')[0])}</span>`}
 function personAvatar(url,name){return url?`<img src="${esc(url)}" alt="${esc(name)}">`:`<span>${esc((name||'?')[0])}</span>`}
 function stat(icon,kicker,value,copy){return `<article><span>${icon}</span><small>${kicker}</small><b>${value}</b><p>${copy}</p></article>`}

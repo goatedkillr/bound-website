@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { databaseRest } from '../server/database.js';
+import { getSession, requireSameOrigin } from '../server/auth.js';
 
-const PUBLIC_SUPABASE_URL=process.env.SUPABASE_URL||'https://hpbqoochibnrxzxeuazb.supabase.co';
-const PUBLIC_SUPABASE_KEY=process.env.SUPABASE_PUBLISHABLE_KEY||'sb_publishable_CQPZKB4Houc0UPn-sccxOQ_uZTD-X37';
 const DARK_SIDE_GUILD_ID='1222024653795496006';
 const SNOWFLAKE=/^\d{17,20}$/;
 const HEX=/^#?[0-9a-fA-F]{6}$/;
@@ -25,11 +24,8 @@ const DEFAULT_PANELS={
 
 class HttpError extends Error{constructor(status,message){super(message);this.status=status}}
 function send(res,status,body,id){res.setHeader('Cache-Control','no-store, max-age=0');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Request-Id',id);return res.status(status).json(body)}
-function bearer(req){const v=String(req.headers.authorization||'');return v.startsWith('Bearer ')?v.slice(7):null}
 async function fetchTimed(url,options={}){const c=new AbortController();const t=setTimeout(()=>c.abort(),TIMEOUT_MS);try{return await fetch(url,{...options,signal:c.signal})}finally{clearTimeout(t)}}
 async function json(url,options={}){const r=await fetchTimed(url,options);const text=await r.text();let data=null;try{data=text?JSON.parse(text):null}catch{data=text}if(!r.ok)throw new HttpError(r.status>=500?502:r.status,data?.message||data?.error_description||data?.error||'Connected service request failed');return data}
-async function verifyUser(token){if(!token)return null;try{return await json(`${PUBLIC_SUPABASE_URL}/auth/v1/user`,{headers:{apikey:PUBLIC_SUPABASE_KEY,Authorization:`Bearer ${token}`}})}catch{return null}}
-function discordUserId(u){return String(u?.user_metadata?.provider_id||u?.user_metadata?.sub||u?.identities?.find?.(x=>x.provider==='discord')?.identity_data?.sub||'')}
 async function railwayRest(path,opts){try{return await databaseRest(path,opts);}catch(error){throw new HttpError(Number(error?.status||502),error?.message||'Railway database request failed.');}}
 const publicRest=railwayRest;
 const privateRest=railwayRest;
@@ -80,10 +76,10 @@ async function handlePreview(req,res,user,id){
 
 async function handleConfig(req,res,user,id){
   if(!['GET','PATCH'].includes(req.method))return send(res,405,{error:'Method not allowed',request_id:id},id);
+  if(req.method!=='GET')requireSameOrigin(req);
   const guildId=String(req.query.guild_id||'');
   if(!SNOWFLAKE.test(guildId))throw new HttpError(400,'Invalid Discord server ID');
-  const uid=discordUserId(user);
-  if(!SNOWFLAKE.test(uid))throw new HttpError(401,'Sign in with Discord first.');
+  const uid=user.discordUserId;
   const guild=await requireGuildAdmin(String(req.headers['x-discord-provider-token']||''),guildId);
   if(!(await isPremium(guildId)))return send(res,403,{error:'This server does not have an active Private Bound dashboard build.',request_id:id},id);
 
@@ -117,14 +113,14 @@ async function handleConfig(req,res,user,id){
 export default async function handler(req,res){
   const id=randomUUID();
   try{
-    const user=await verifyUser(bearer(req));
+    const user=getSession(req);
     if(!user)throw new HttpError(401,'Sign in to Bound first');
     const mode=String(req.query.mode||'preview').toLowerCase();
     if(mode==='preview')return await handlePreview(req,res,user,id);
     if(mode==='config')return await handleConfig(req,res,user,id);
     throw new HttpError(400,'Unknown ticket API mode');
   }catch(error){
-    const status=error instanceof HttpError?error.status:500;
+    const status=error?.status&&Number.isInteger(error.status)?error.status:500;
     console.error(`[tickets ${id}]`,error?.message||error);
     return send(res,status,{error:error instanceof Error?error.message:'Could not process ticket request',request_id:id},id);
   }

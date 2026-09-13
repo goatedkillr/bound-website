@@ -1,4 +1,4 @@
-import { supabase, authReady, isAuthCallback, getStoredProviderToken, ensureFreshProviderToken, refreshProviderToken, clearProviderTokens } from './supabase-client.js';
+import { authReady, isAuthCallback, getStoredProviderToken, ensureFreshProviderToken, refreshProviderToken, startDiscordLogin, signOut } from './auth-client.js';
 
 const $=id=>document.getElementById(id);
 const pages={overview:'Overview',profile:'My Bound Profile',servers:'Servers',safety:'Safety & Consent',moderation:'Moderation',tickets:'Tickets & Support',economy:'Factions',staff:'Staff',roleplay:'Social & RP',logs:'Audit Log',settings:'Server Settings'};
@@ -10,8 +10,7 @@ const generic={
  roleplay:['Social & RP','Ownership, gagging and social systems share the same Railway backend.',[['♡','Interactions','Hug, kiss, bite, cuddle and more'],['◉','Ownership','Claims, owners and subs'],['◇','Gag system','Consent-based gag controls']]],
  logs:['Audit Log','Recent activity is loaded on Overview. Full audit search is the next dashboard module.',[['≣','Moderation','Actions and reasons'],['⛓','Factions','Bonds and faction activity'],['◆','Safety','Protected review history']]],
 };
-let session=null,providerToken=getStoredProviderToken()||null,managedGuilds=[],selectedGuildId=localStorage.getItem('bound_dashboard_guild')||null,overview=null,bootstrapRunning=false,oauthStarting=false;
-const OAUTH_START_KEY='bound_discord_oauth_started_at';
+let signedIn=false,providerToken=getStoredProviderToken()||null,managedGuilds=[],selectedGuildId=localStorage.getItem('bound_dashboard_guild')||null,overview=null,bootstrapRunning=false;
 const permissionLabels={manage_settings:'Server settings',manage_safety:'Safety controls',manage_factions:'Faction controls'};
 
 function escapeHtml(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -36,22 +35,9 @@ document.addEventListener('keydown',event=>{if(event.key==='Escape')setSidebarOp
 window.matchMedia('(min-width: 761px)').addEventListener('change',event=>{if(event.matches)setSidebarOpen(false)});
 if($('uptimeBars'))$('uptimeBars').innerHTML=Array.from({length:36},()=>'<i></i>').join('');
 
-async function signInWithDiscord(){
- if(oauthStarting)return;
- const previous=Number(sessionStorage.getItem(OAUTH_START_KEY)||0);
- if(previous&&Date.now()-previous<15_000)return;
- oauthStarting=true;
- sessionStorage.setItem(OAUTH_START_KEY,String(Date.now()));
- try{
-   setLoading($('authDiscordBtn'),true,'Opening Discord…');
-   const{error}=await supabase.auth.signInWithOAuth({provider:'discord',options:{scopes:'identify guilds',redirectTo:`${location.origin}/dashboard.html`,skipBrowserRedirect:false}});
-   if(error)throw error;
- }catch(e){
-   oauthStarting=false;
-   sessionStorage.removeItem(OAUTH_START_KEY);
-   toast('Discord login failed',e.message||'Could not start login.');
-   setLoading($('authDiscordBtn'),false);
- }
+function signInWithDiscord(){
+ setLoading($('authDiscordBtn'),true,'Opening Discord…');
+ startDiscordLogin();
 }
 $('authDiscordBtn')?.addEventListener('click',signInWithDiscord);
 
@@ -61,14 +47,15 @@ if(isAuthCallback){
  if(copy)copy.textContent='Discord is connected. Loading your servers now…';
  if(button){button.textContent='Connecting…';button.disabled=true}
 }
-$('loginBtn')?.addEventListener('click',()=>session?toggleServerPicker():signInWithDiscord());
-$('logoutBtn')?.addEventListener('click',async()=>{await supabase.auth.signOut();clearProviderTokens();localStorage.removeItem('bound_dashboard_guild');session=null;providerToken=null;managedGuilds=[];selectedGuildId=null;renderSignedOut()});
+$('loginBtn')?.addEventListener('click',()=>signedIn?toggleServerPicker():signInWithDiscord());
+$('logoutBtn')?.addEventListener('click',async()=>{await signOut();localStorage.removeItem('bound_dashboard_guild');signedIn=false;providerToken=null;managedGuilds=[];selectedGuildId=null;renderSignedOut()});
 function renderSignedOut(reason){
  $('authGate')?.classList.remove('hidden');
- // A Bound username/password account (created via Account for faster future
- // logins) still has to link Discord before the dashboard can list servers -
- // that's a real, different state from "not signed in at all", and showing
- // the same generic gate for both used to look like a broken dead end.
+ // A valid session can still be missing a usable Discord provider token (the
+ // separate access token used for live guild permission checks) - e.g. right
+ // after a page reload before a silent refresh has run. That is a real,
+ // different state from "not signed in at all", and showing the same generic
+ // gate for both used to look like a broken dead end.
  const noDiscord=reason==='no-discord';
  if($('loginBtn'))$('loginBtn').textContent=noDiscord?'Connect Discord':'Discord Login';
  if($('userName'))$('userName').textContent=noDiscord?'Discord not connected':'Not signed in';
@@ -79,7 +66,7 @@ function renderSignedOut(reason){
  const gateHeading=document.querySelector('#authGate h2'),gateCopy=document.querySelector('#authGate p'),gateBtn=$('authDiscordBtn');
  if(noDiscord){
    if(gateHeading)gateHeading.textContent='Connect Discord to continue';
-   if(gateCopy)gateCopy.textContent='You are signed in to your Bound account, but the dashboard still needs Discord to know which servers you can manage.';
+   if(gateCopy)gateCopy.textContent='You are signed in, but the dashboard still needs Discord to know which servers you can manage.';
    if(gateBtn)gateBtn.textContent='Connect Discord';
  }else{
    if(gateHeading)gateHeading.textContent='Manage Bound with Discord';
@@ -87,13 +74,13 @@ function renderSignedOut(reason){
    if(gateBtn)gateBtn.textContent='Continue with Discord';
  }
 }
-async function apiCall(action,{guildId,method='GET',body}={}){const q=new URLSearchParams({action});if(guildId)q.set('guild_id',guildId);return fetch(`/api/dashboard?${q}`,{method,headers:{Authorization:`Bearer ${session.access_token}`,'X-Discord-Provider-Token':providerToken,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});}
+async function apiCall(action,{guildId,method='GET',body}={}){const q=new URLSearchParams({action});if(guildId)q.set('guild_id',guildId);return fetch(`/api/dashboard?${q}`,{method,headers:{'X-Discord-Provider-Token':providerToken,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});}
 // Discord's access token is short-lived; rather than surface "reconnect
 // Discord" the moment it expires, try a silent refresh (backed by the
 // Discord refresh token captured at sign-in) and transparently retry once
 // before ever bothering the user with a real Discord redirect.
 async function api(action,opts={}){
-  if(!session?.access_token)throw new Error('Your session expired. Sign in again.');
+  if(!signedIn)throw new Error('Your session expired. Sign in again.');
   if(!providerToken){const fresh=await ensureFreshProviderToken();if(fresh)providerToken=fresh;else throw new Error('Discord server access expired. Reconnect Discord.');}
   let r=await apiCall(action,opts);
   if(r.status===401){const refreshed=await refreshProviderToken();if(refreshed){providerToken=refreshed;r=await apiCall(action,opts);}}
@@ -103,7 +90,7 @@ async function api(action,opts={}){
 }
 
 async function bootstrap(){
-  if(bootstrapRunning||!session||!providerToken)return;
+  if(bootstrapRunning||!signedIn||!providerToken)return;
   bootstrapRunning=true;
   try{
     // Passing the last-selected guild lets the server fold that guild's
@@ -140,7 +127,7 @@ async function bootstrap(){
 function factionStatusText(s){return s==='approved'?'Faction approved':s==='needs_owner_migration'?'Needs owner migration':'Awaiting owner approval';}
 function renderGuildPicker(){const p=$('serverPicker');if(!p)return;if(!managedGuilds.length){p.innerHTML='<div class="picker-empty">No manageable servers found.</div>';return}p.innerHTML=managedGuilds.map(g=>`<button class="server-option ${g.id===selectedGuildId?'active':''}" data-guild-id="${g.id}">${g.icon_url?`<img src="${g.icon_url}" alt="${escapeHtml(g.name)} icon"><span style="display:none">${avatarFallback(g.name)}</span>`:`<span>${avatarFallback(g.name)}</span>`}<div><b>${escapeHtml(g.name)}</b><small>${g.bound_installed?'Bound detected':'Bound data not detected'} • ${factionStatusText(g.faction_status)}</small></div>${g.faction_status==='approved'?'<em>FACTION</em>':g.bound_installed?'<em>BOUND</em>':''}</button>`).join('');p.querySelectorAll('[data-guild-id]').forEach(b=>b.addEventListener('click',()=>chooseGuild(b.dataset.guildId,true)));}
 function toggleServerPicker(){const p=$('serverPicker');if(p)p.hidden=!p.hidden}
-$('serverPickerBtn')?.addEventListener('click',()=>session?toggleServerPicker():signInWithDiscord());
+$('serverPickerBtn')?.addEventListener('click',()=>signedIn?toggleServerPicker():signInWithDiscord());
 document.addEventListener('click',e=>{const p=$('serverPicker');if(!p||p.hidden)return;if(!p.contains(e.target)&&e.target!==$('serverPickerBtn')&&e.target!==$('loginBtn'))p.hidden=true});
 async function chooseGuild(id,close=true){selectedGuildId=id;localStorage.setItem('bound_dashboard_guild',id);if(close&&$('serverPicker'))$('serverPicker').hidden=true;renderGuildPicker();const g=managedGuilds.find(x=>x.id===id);if(g){if($('serverName'))$('serverName').textContent=g.name;applyServerIcon($('serverIcon'),g.icon_url,g.name)}applyDashboardAccess();window.dispatchEvent(new CustomEvent('bound:guild-change',{detail:{guild:g}}));if(g?.faction_only)showView('economy');await Promise.all([loadOverview(),g?.owner?loadPermissionGrants():Promise.resolve()]);}
 
@@ -197,25 +184,14 @@ function renderActivity(rows){const el=$('activityList');if(!el)return;if(!rows.
 $('prefixInput')?.addEventListener('input',()=>{if($('saveState'))$('saveState').textContent='Unsaved changes'});
 $('saveSettings')?.addEventListener('click',async()=>{if(!selectedGuildId)return toast('Choose a server','Select a server first.');const btn=$('saveSettings');try{setLoading(btn,true,'Saving…');const prefix=$('prefixInput')?.value||'';const d=await api('settings',{guildId:selectedGuildId,method:'PATCH',body:{prefix}});if($('prefixInput'))$('prefixInput').value=d.settings?.prefix||prefix;if($('saveState'))$('saveState').textContent='All changes saved';toast('Server settings saved','Bound will pick up the new prefix shortly.')}catch(e){toast('Could not save',e.message)}finally{setLoading(btn,false)}});
 
-supabase.auth.onAuthStateChange((event,newSession)=>{
- session=newSession;
- if(newSession?.provider_token)providerToken=newSession.provider_token;
- if(event==='SIGNED_OUT'){providerToken=null;renderSignedOut();return}
- if(newSession&&providerToken&&(event==='SIGNED_IN'||event==='TOKEN_REFRESHED'||event==='INITIAL_SESSION')){queueMicrotask(()=>bootstrap())}
-});
-
 (async()=>{
- if(isAuthCallback)sessionStorage.removeItem(OAUTH_START_KEY);
- let existing=null;
- try{existing=await authReady}catch(error){console.error('Bound sign-in failed:',error);sessionStorage.setItem('bound_auth_error',error?.message||'Discord sign-in failed.');renderSignedOut();return}
- session=existing;
- sessionStorage.removeItem(OAUTH_START_KEY);
- if(existing?.provider_token)providerToken=existing.provider_token;
- if(session&&providerToken){await bootstrap();return}
- if(session&&!providerToken){
+ try{signedIn=await authReady}catch(error){console.error('Bound sign-in failed:',error);sessionStorage.setItem('bound_auth_error',error?.message||'Discord sign-in failed.');renderSignedOut();return}
+ providerToken=getStoredProviderToken()||providerToken;
+ if(signedIn&&providerToken){await bootstrap();return}
+ if(signedIn&&!providerToken){
    // No provider token in memory yet - it may just not have landed in
-   // storage/state this tick (fresh OAuth redirect), or it may genuinely be
-   // stale. Try a silent Discord refresh before giving up and showing the
+   // storage this tick (fresh OAuth redirect), or it may genuinely be stale.
+   // Try a silent Discord refresh before giving up and showing the
    // signed-out gate.
    const fresh=await ensureFreshProviderToken();
    if(fresh){providerToken=fresh;await bootstrap();}else renderSignedOut('no-discord');

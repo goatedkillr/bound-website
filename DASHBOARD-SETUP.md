@@ -1,6 +1,6 @@
 ## What is live now
 
-- Supabase Auth Discord login/session
+- Discord OAuth login/session (api/discord-oauth.js, self-issued session cookie)
 - Railway Postgres shared with the Bound bot for all live data and settings
 - Discord server permission checking
 - Bound-installed server detection via `bound_guild_activation`

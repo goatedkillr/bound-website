@@ -38,11 +38,6 @@
 
   function statCard(label,value,copy){return `<article class="finish-card"><small>${label}</small><h3>${value}</h3><p>${copy}</p></article>`;}
 
-  async function getSession(){
-    const {supabase}=await import('./supabase-client.js');
-    return (await supabase.auth.getSession()).data.session;
-  }
-
   async function loadTicketSurface(){
     render('tickets');
     const surface=document.getElementById('ticketPremiumSurface');
@@ -50,9 +45,7 @@
     if(!surface||!guildId)return;
     surface.innerHTML=`<div class="finish-banner"><div><span class="finish-kicker">CHECKING ACCESS</span><h3>Loading ticket access</h3><p>Checking this server against Bound premium.</p></div></div>`;
     try{
-      const session=await getSession();
-      if(!session?.access_token)throw new Error('Sign in to view ticket access');
-      const headers={Authorization:`Bearer ${session.access_token}`};
+      const headers={};
       const provider=providerToken();if(provider)headers['X-Discord-Provider-Token']=provider;
       const response=await fetch(`/api/tickets?mode=preview&guild_id=${encodeURIComponent(guildId)}`,{headers});
       const data=await response.json().catch(()=>({}));
@@ -92,8 +85,9 @@
 
   async function loadPersonalContext(){
     try{
-      const session=await getSession();if(!session?.access_token)return;
-      const response=await fetch('/api/personal-context',{headers:{Authorization:`Bearer ${session.access_token}`}});
+      const {authReady}=await import('./auth-client.js');
+      const signedIn=await authReady;if(!signedIn)return;
+      const response=await fetch('/api/personal-context');
       const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Could not load personal dashboard data');renderPersonalContext(data);
     }catch(error){console.warn('Bound personal dashboard context unavailable:',error?.message||error)}
   }

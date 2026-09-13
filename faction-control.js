@@ -1,4 +1,4 @@
-import { supabase, authReady, ensureFreshProviderToken } from './supabase-client.js';
+import { authReady, ensureFreshProviderToken } from './auth-client.js';
 
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -7,10 +7,10 @@ let data=null,loading=false;
 
 function guildId(){return localStorage.getItem('bound_dashboard_guild')||''}
 async function request(action,{method='GET',body}={}){
-  const session=await authReady;
+  const signedIn=await authReady;
   const provider=await ensureFreshProviderToken();
-  if(!session?.access_token||!provider)throw new Error('Your Discord session is not ready.');
-  const response=await fetch(`/api/dashboard?action=${encodeURIComponent(action)}`,{method,headers:{Authorization:`Bearer ${session.access_token}`,'X-Discord-Provider-Token':provider,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+  if(!signedIn||!provider)throw new Error('Your Discord session is not ready.');
+  const response=await fetch(`/api/dashboard?action=${encodeURIComponent(action)}`,{method,headers:{'X-Discord-Provider-Token':provider,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
   const payload=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(payload.error||`Faction request failed (${response.status}).`);
   return payload;

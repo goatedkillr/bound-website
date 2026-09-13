@@ -5,7 +5,6 @@
 
   const guildId=()=>localStorage.getItem('bound_dashboard_guild')||'';
   const providerToken=()=>sessionStorage.getItem('bound_discord_provider_token')||localStorage.getItem('bound_discord_provider_token_backup')||'';
-  function authToken(){for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i)||'';if(!k.startsWith('sb-')||!k.endsWith('-auth-token'))continue;try{const v=JSON.parse(localStorage.getItem(k)||'null');const t=v?.access_token||v?.currentSession?.access_token;if(t)return t}catch{}}return null;}
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt=v=>Number(v||0).toLocaleString('en-GB');
 
@@ -15,10 +14,8 @@
   function loading(copy='Loading live ticket data'){const h=host();if(h)h.innerHTML=`<div class="finish-banner"><div><span class="finish-kicker">LIVE TICKET NETWORK</span><h3>${copy}</h3><p>Bound is reading the latest private ticket totals.</p></div></div>`;}
 
   async function previewRequest(){
-    const access=authToken();
-    if(!access)throw new Error('Sign in to view live ticket data');
     const id=guildId();
-    const headers={Authorization:`Bearer ${access}`};
+    const headers={};
     const provider=providerToken();
     if(provider)headers['X-Discord-Provider-Token']=provider;
     const url=id?`/api/tickets?mode=preview&guild_id=${encodeURIComponent(id)}`:'/api/tickets?mode=preview';
@@ -29,10 +26,10 @@
   }
 
   async function configRequest(method='GET',body){
-    const id=guildId(),access=authToken(),provider=providerToken();
-    if(!id||!access)throw new Error('Choose a server and sign in first');
+    const id=guildId(),provider=providerToken();
+    if(!id)throw new Error('Choose a server first');
     if(!provider)throw new Error('Refresh Discord before changing ticket settings');
-    const r=await fetch(`/api/tickets?mode=config&guild_id=${encodeURIComponent(id)}`,{method,headers:{Authorization:`Bearer ${access}`,'X-Discord-Provider-Token':provider,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+    const r=await fetch(`/api/tickets?mode=config&guild_id=${encodeURIComponent(id)}`,{method,headers:{'X-Discord-Provider-Token':provider,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
     const d=await r.json().catch(()=>({}));
     if(!r.ok){const e=new Error(d.error||`Ticket settings failed (${r.status})`);e.status=r.status;throw e;}
     return d;

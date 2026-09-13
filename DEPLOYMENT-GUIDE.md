@@ -9,7 +9,7 @@ The site package is a working front-end website:
 - `styles.css` / `script.js` — public website styling and interactions
 - `dashboard.css` / `dashboard.js` — dashboard styling and interactions
 
-The site is deployed on Vercel. Its server-side API reads and writes the same Railway Postgres database as the Bound bot, while Supabase remains the Discord identity provider.
+The site is deployed on Vercel. Its server-side API reads and writes the same Railway Postgres database as the Bound bot. Discord OAuth is handled directly by the site (`api/discord-oauth.js`), which issues its own signed session cookie - there is no external identity provider.
 
 ---
 
@@ -107,7 +107,7 @@ You can also keep everything under one domain initially to keep deployment simpl
 
 # Part 5 — Make the dashboard actually log users in with Discord
 
-The safest route with your existing stack is Discord OAuth through Supabase Auth.
+The site talks to Discord directly - no third-party auth provider sits in between. `api/discord-oauth.js` runs the whole handshake and issues its own signed, HttpOnly session cookie (`server/auth.js`).
 
 ## A. Create/configure your Discord application
 
@@ -116,42 +116,25 @@ The safest route with your existing stack is Discord OAuth through Supabase Auth
 3. Go to OAuth2.
 4. Keep the Client ID.
 5. Create/copy the Client Secret.
-6. Do **not** put the client secret into public JavaScript or GitHub.
+6. Do **not** put the client secret into public JavaScript or GitHub - it only ever lives in `DISCORD_CLIENT_SECRET` on Vercel.
 
-## B. Enable Discord in Supabase Auth
+## B. Register the callback URL with Discord
 
-1. Open your Supabase project.
-2. Go to **Authentication → Sign In / Providers**.
-3. Open Discord.
-4. Supabase shows a callback URL similar to:
-   `https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback`
-5. Add that exact callback URL to the Discord application's OAuth2 redirect list.
-6. Put the Discord Client ID and Client Secret into the Discord provider settings in Supabase.
-7. Enable the provider.
+1. In the same application's OAuth2 → Redirects, add:
+   `https://<your-domain>/api/discord-oauth?action=callback`
+2. Add a second entry for any Vercel preview domain you test against before merging.
+3. Save.
 
-## C. Configure Supabase site redirects
+## C. Configure Vercel environment variables
 
-In **Authentication → URL Configuration**:
+Set on Vercel (Sensitive):
 
-- Site URL: your production website, e.g. `https://boundbot.com`
-- Add allowed redirect URLs for the dashboard/login flow.
-- While developing locally, add your localhost URL as well.
+- `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` - from step A.
+- `SESSION_SECRET` - a random 32-byte value that signs the session cookie. Generate once with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. Rotating it signs every active session out.
 
 ## D. Front-end login flow
 
-The browser is allowed to contain:
-
-- your Supabase project URL
-- your Supabase **publishable/anon** key
-
-The browser must never contain:
-
-- `SUPABASE_SERVICE_ROLE_KEY`
-- Discord bot token
-- Discord Client Secret
-- database admin credentials
-
-On login, call Supabase Auth with Discord as the provider. After Discord and Supabase complete OAuth, redirect the user to the dashboard.
+The browser never handles a Discord client secret, a database credential, or the session-signing secret - it only ever sees `location.href = '/api/discord-oauth?action=login'` (see `auth-client.js`'s `startDiscordLogin()`), then a redirect back to `dashboard.html` once `api/discord-oauth.js` has completed the exchange and set the session cookie.
 
 ---
 
@@ -194,7 +177,7 @@ Set Vercel's server-only `DATABASE_URL` to the Railway Postgres service's `DATAB
 
 The production request path is:
 
-Browser → Supabase Auth session → Vercel Function → Discord permission check → Railway Postgres → response
+Browser → Bound session cookie → Vercel Function → Discord permission check → Railway Postgres → response
 
 All SQL is executed server-side with bound parameters. The browser never connects directly to Postgres.
 
@@ -220,8 +203,8 @@ This avoids trying to communicate directly from a visitor's browser to the Disco
 # Part 9 — Production security checklist
 
 - Never commit the Discord bot token.
-- Never expose `DATABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` in HTML/JS.
-- Keep Discord Client Secret server-side/Supabase-side.
+- Never expose `DATABASE_URL`, `SESSION_SECRET` or `DISCORD_CLIENT_SECRET` in HTML/JS.
+- Keep the Discord Client Secret and session-signing secret server-side only.
 - Keep all Railway Postgres access behind authenticated Vercel Functions.
 - Validate the signed-in user's Discord ID on the server.
 - Check guild permissions on every privileged change.

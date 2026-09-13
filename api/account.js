@@ -1,24 +1,10 @@
 import { databaseRest } from '../server/database.js';
-
-const SUPABASE_URL=process.env.SUPABASE_URL||'https://hpbqoochibnrxzxeuazb.supabase.co';
-const PUBLISHABLE=process.env.SUPABASE_PUBLISHABLE_KEY||'sb_publishable_CQPZKB4Houc0UPn-sccxOQ_uZTD-X37';
-const SERVICE=process.env.SUPABASE_SERVICE_ROLE_KEY;
-const USERNAME=/^[a-zA-Z0-9_]{3,24}$/;
-const SNOWFLAKE=/^\d{15,25}$/;
-const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { getSession, requireSameOrigin } from '../server/auth.js';
 
 function headers(res){res.setHeader('Cache-Control','no-store, max-age=0');res.setHeader('Pragma','no-cache');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');}
 function send(res,status,body){headers(res);return res.status(status).json(body)}
-function bearer(req){const v=String(req.headers.authorization||'');return v.startsWith('Bearer ')?v.slice(7):null}
-async function fetchJson(url,opts={}){const r=await fetch(url,opts);const t=await r.text();let d=null;try{d=t?JSON.parse(t):null}catch{d=t}if(!r.ok){const e=new Error(d?.message||d?.error_description||d?.error||`Request failed (${r.status})`);e.status=r.status;throw e}return d}
-async function authUser(token){if(!token)return null;try{return await fetchJson(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:PUBLISHABLE,Authorization:`Bearer ${token}`}})}catch{return null}}
-function metaDiscordId(u){const identity=u?.identities?.find?.(x=>x.provider==='discord');return String(identity?.identity_data?.sub||identity?.identity_data?.id||'')}
 const rest=databaseRest;
-async function accountFor(user){const rows=await rest(`dashboard_accounts?select=*&auth_user_id=eq.${encodeURIComponent(user.id)}&limit=1`);return rows?.[0]||null}
 async function deletionRequestFor(uid,{pendingOnly=false}={}){if(!uid)return null;const status=pendingOnly?'&status=eq.pending':'';const rows=await rest(`data_deletion_requests?select=id,status,requested_at,reviewed_at,source&user_id=eq.${encodeURIComponent(uid)}${status}&order=requested_at.desc&limit=1`);return rows?.[0]||null}
-async function resolveDiscordId(user,account){const id=String(account?.discord_user_id||metaDiscordId(user)||'');return SNOWFLAKE.test(id)?id:null}
-async function updateAuthUser(id,body){if(!SERVICE)throw new Error('SUPABASE_SERVICE_ROLE_KEY is missing for Auth administration.');return fetchJson(`${SUPABASE_URL}/auth/v1/admin/users/${id}`,{method:'PUT',headers:{apikey:SERVICE,Authorization:`Bearer ${SERVICE}`,'Content-Type':'application/json'},body:JSON.stringify(body)})}
-function normUsername(v){return String(v||'').trim().toLowerCase()}
 function duration(s){s=Number(s||0);const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);return [d&&`${d}d`,h&&`${h}h`,m&&`${m}m`].filter(Boolean).join(' ')||`${s}s`}
 function achievement(name,description,current,target,unit){const unlocked=Number(current)>=target;return{name,description,current:Number(current||0),target,unit:unit||null,unlocked,progress:Math.min(100,Math.floor((Number(current||0)/target)*100))}}
 async function bdsmData(uid){
@@ -35,10 +21,14 @@ async function bdsmData(uid){
  return{profile:{user_id:uid,display_name:p.display_name||p.username||uid,username:p.username||uid,avatar_url:p.avatar_url||null,role_preference:p.role_preference||'unspecified',subscription_tier:p.subscription_tier||'free',bdsm_level:Number(p.bdsm_level||1),bdsm_xp:Number(p.bdsm_xp||0),bdsm_lifetime_xp:Number(p.bdsm_lifetime_xp||0)},stats:{owners:owners.length,subs:subs.length,total_bond:totalBond,highest_bond:highestBond,gag_times:gagTimes,gag_messages:gagMessages,total_gag_seconds:totalGagSeconds,longest_gag_seconds:longestGagSeconds,total_gag_time:duration(totalGagSeconds),longest_gag_time:duration(longestGagSeconds),rp_total:Object.values(rp).reduce((a,b)=>a+b,0),rp},achievements,achievement_summary:{unlocked:achievements.filter(x=>x.unlocked).length,total:achievements.length,completion:Math.floor((achievements.filter(x=>x.unlocked).length/achievements.length)*100)}}
 }
 
-export default async function handler(req,res){try{headers(res);if(!SERVICE)return send(res,500,{error:'Server auth is not configured.'});const user=await authUser(bearer(req));if(!user)return send(res,401,{error:'Sign in first.'});const action=String(req.query.action||'me');const account=await accountFor(user);const uid=await resolveDiscordId(user,account);
- if(action==='me'&&req.method==='GET'){const deletionRequest=await deletionRequestFor(uid);return send(res,200,{account:account?{username:account.username,email:account.email||user.email||null,discord_user_id:account.discord_user_id,created_at:account.created_at,last_login_at:account.last_login_at}:null,discord_connected:Boolean(uid),discord_user_id:uid,deletion_request:deletionRequest})}
- if(action==='deletion'&&req.method==='POST'){if(!uid)return send(res,409,{error:'Connect Discord first so the request is linked to the correct user.'});const existing=await deletionRequestFor(uid,{pendingOnly:true});if(existing)return send(res,200,{created:false,request:existing});try{const rows=await rest('data_deletion_requests',{method:'POST',body:{user_id:uid,source:'website'}});return send(res,201,{created:true,request:rows?.[0]||null})}catch(e){if(e.status===409){const pending=await deletionRequestFor(uid,{pendingOnly:true});if(pending)return send(res,200,{created:false,request:pending})}throw e}}
- if(action==='bdsm'&&req.method==='GET'){if(!uid)return send(res,409,{error:'Connect Discord once so Bound can link your account data.'});return send(res,200,await bdsmData(uid))}
- if(action==='credentials'&&req.method==='POST'){if(!uid)return send(res,409,{error:'Connect Discord first so this account stays attached to your Discord user ID.'});const username=String(req.body?.username||'').trim(),normalized=normUsername(username),email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||'');if(!USERNAME.test(username))return send(res,400,{error:'Username must be 3–24 letters, numbers or underscores.'});if(!EMAIL.test(email)||email.length>254)return send(res,400,{error:'Enter a valid email address.'});if(password.length<8||password.length>128)return send(res,400,{error:'Password must be 8–128 characters.'});const clashes=await rest(`dashboard_accounts?select=auth_user_id&username_normalized=eq.${encodeURIComponent(normalized)}&limit=1`);if(clashes?.length&&clashes[0].auth_user_id!==user.id)return send(res,409,{error:'That Bound username is already taken.'});const emailClashes=await rest(`dashboard_accounts?select=auth_user_id&email=eq.${encodeURIComponent(email)}&limit=1`);if(emailClashes?.length&&emailClashes[0].auth_user_id!==user.id)return send(res,409,{error:'That email is already used by another Bound account.'});await updateAuthUser(user.id,{email,password,email_confirm:true,user_metadata:{...(user.user_metadata||{}),bound_username:username,provider_id:uid,discord_user_id:uid}});const rows=await rest('dashboard_accounts',{method:'POST',prefer:'resolution=merge-duplicates,return=representation',body:{auth_user_id:user.id,username,username_normalized:normalized,email,discord_user_id:uid,updated_at:new Date().toISOString(),last_login_at:new Date().toISOString()}});return send(res,200,{ok:true,account:rows?.[0]||{username,email,discord_user_id:uid}})}
- if(action==='password'&&req.method==='PATCH'){if(!account)return send(res,409,{error:'Create your Bound account first.'});const password=String(req.body?.password||'');if(password.length<8||password.length>128)return send(res,400,{error:'Password must be 8–128 characters.'});await updateAuthUser(user.id,{password});return send(res,200,{ok:true})}
- return send(res,405,{error:'Unsupported account action.'})}catch(e){console.error('Bound account API:',e);return send(res,e.status&&e.status<500?e.status:500,{error:e.message||'Account request failed.'})}}
+export default async function handler(req,res){try{
+ headers(res);
+ if(req.method!=='GET')requireSameOrigin(req);
+ const session=getSession(req);if(!session)return send(res,401,{error:'Sign in first.'});
+ const uid=session.discordUserId;
+ const action=String(req.query.action||'me');
+ if(action==='me'&&req.method==='GET'){const deletionRequest=await deletionRequestFor(uid);return send(res,200,{discord_connected:true,discord_user_id:uid,deletion_request:deletionRequest})}
+ if(action==='deletion'&&req.method==='POST'){const existing=await deletionRequestFor(uid,{pendingOnly:true});if(existing)return send(res,200,{created:false,request:existing});try{const rows=await rest('data_deletion_requests',{method:'POST',body:{user_id:uid,source:'website'}});return send(res,201,{created:true,request:rows?.[0]||null})}catch(e){if(e.status===409){const pending=await deletionRequestFor(uid,{pendingOnly:true});if(pending)return send(res,200,{created:false,request:pending})}throw e}}
+ if(action==='bdsm'&&req.method==='GET'){return send(res,200,await bdsmData(uid))}
+ return send(res,405,{error:'Unsupported account action.'})
+}catch(e){console.error('Bound account API:',e);const status=e?.status&&Number.isInteger(e.status)?e.status:500;return send(res,status,{error:e.message||'Account request failed.'})}}

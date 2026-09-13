@@ -18,14 +18,6 @@
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const compact = n => { n=Number(n||0); return n>=1e9?`${(n/1e9).toFixed(1)}B`:n>=1e6?`${(n/1e6).toFixed(1)}M`:n>=1e3?`${(n/1e3).toFixed(1)}K`:String(n); };
   const avatar = row => row.avatar_url ? `<img src="${esc(row.avatar_url)}" alt="">` : `<span class="rank-avatar">${esc((row.name||'?').charAt(0).toUpperCase())}</span>`;
-  const authToken = () => {
-    for (let i=0;i<localStorage.length;i++) {
-      const key=localStorage.key(i)||'';
-      if(!key.startsWith('sb-')||!key.endsWith('-auth-token')) continue;
-      try { const raw=JSON.parse(localStorage.getItem(key)||'null'); const token=raw?.access_token||raw?.currentSession?.access_token; if(token)return token; } catch {}
-    }
-    return null;
-  };
   const providerToken = () => sessionStorage.getItem('bound_discord_provider_token') || localStorage.getItem('bound_discord_provider_token_backup') || '';
   const guildId = () => localStorage.getItem('bound_dashboard_guild') || '';
 
@@ -93,20 +85,20 @@
 
   async function loadGagState(){
     ensureGagToggle();
-    const gid=guildId(),token=authToken(),provider=providerToken(),btn=document.getElementById('gagMasterToggle');
-    if(!gid||!token||!provider||!btn)return;
+    const gid=guildId(),provider=providerToken(),btn=document.getElementById('gagMasterToggle');
+    if(!gid||!provider||!btn)return;
     btn.disabled=true;
     try{
-      const r=await fetch(`/api/gag-control?guild_id=${encodeURIComponent(gid)}`,{headers:{Authorization:`Bearer ${token}`,'X-Discord-Provider-Token':provider}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not load gag settings');
+      const r=await fetch(`/api/gag-control?guild_id=${encodeURIComponent(gid)}`,{headers:{'X-Discord-Provider-Token':provider}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not load gag settings');
       const on=d.config?.gag_enabled!==false;btn.classList.toggle('on',on);btn.setAttribute('aria-pressed',String(on));
     }catch(error){console.error(error)}finally{btn.disabled=false;}
   }
 
   async function saveGagState(){
-    const btn=document.getElementById('gagMasterToggle'),gid=guildId(),token=authToken(),provider=providerToken();if(!btn||!gid||!token||!provider)return;
+    const btn=document.getElementById('gagMasterToggle'),gid=guildId(),provider=providerToken();if(!btn||!gid||!provider)return;
     const previous=btn.classList.contains('on'),next=!previous;btn.classList.toggle('on',next);btn.disabled=true;
     try{
-      const r=await fetch(`/api/gag-control?guild_id=${encodeURIComponent(gid)}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'X-Discord-Provider-Token':provider,'Content-Type':'application/json'},body:JSON.stringify({gag_enabled:next})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not save gag setting');
+      const r=await fetch(`/api/gag-control?guild_id=${encodeURIComponent(gid)}`,{method:'PATCH',headers:{'X-Discord-Provider-Token':provider,'Content-Type':'application/json'},body:JSON.stringify({gag_enabled:next})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not save gag setting');
       const saved=d.config?.gag_enabled!==false;btn.classList.toggle('on',saved);btn.setAttribute('aria-pressed',String(saved));
     }catch(error){btn.classList.toggle('on',previous);alert(error.message||'Could not save gag setting');}finally{btn.disabled=false;}
   }

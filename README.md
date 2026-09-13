@@ -23,11 +23,11 @@ Then open the local address shown in the terminal. The Dashboard button on the l
 ## Production architecture
 
 - Vercel serves the static site and server-side API functions.
-- Supabase Auth owns Discord login and sessions.
+- Discord OAuth (`api/discord-oauth.js`) owns login; the site issues its own signed session cookie - no external identity provider.
 - Railway Postgres is the shared source of truth for the website and Bound bot.
-- Every privileged API request re-checks the signed-in user and Discord guild permissions server-side.
+- Every privileged API request re-checks the signed-in session and Discord guild permissions server-side.
 
-Set `DATABASE_URL` in Vercel to Railway's public Postgres URL. Keep it, the Discord client secret, bot token, and Supabase Auth service-role key out of browser JavaScript and GitHub. See `.env.example` and `README-DASHBOARD-FIRST.md`.
+Set `DATABASE_URL` in Vercel to Railway's public Postgres URL. Keep it, the Discord client secret, bot token, and session-signing secret out of browser JavaScript and GitHub. See `.env.example` and `README-DASHBOARD-FIRST.md`.
 
 ## Live Bound links
 

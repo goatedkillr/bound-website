@@ -5,16 +5,16 @@ import { spawnSync } from 'node:child_process';
 const root = resolve(import.meta.dirname, '..');
 const pages = ['index.html', 'dashboard.html'];
 const scripts = [
-  'account-ui.js', 'admin-auth-guard.js', 'auth-bridge.js', 'dashboard-access.js',
-  'dashboard-auth-shell.js', 'dashboard-config.js', 'dashboard-finish.js',
+  'account-ui.js', 'auth-client.js', 'dashboard-access.js',
+  'dashboard-config.js', 'dashboard-finish.js',
   'faction-control.js',
   'dashboard-polish.js', 'dashboard-runtime.js', 'dashboard.js', 'private-controls.js',
   'private-dashboard.js', 'reach.js', 'safety-live.js', 'script.js', 'showcase.js',
-  'supabase-client.js', 'ticket-controls.js', 'welcome-auth.js',
-  'api/account.js', 'api/dashboard.js', 'api/discord-refresh.js', 'api/gag-control.js',
+  'ticket-controls.js', 'welcome-auth.js',
+  'api/account.js', 'api/dashboard.js', 'api/discord-oauth.js', 'api/gag-control.js',
   'api/leaderboards.js', 'api/personal-context.js',
   'api/private.js', 'api/profile.js', 'api/reach.js', 'api/safety-stats.js', 'api/tickets.js',
-  'server/database.js',
+  'server/auth.js', 'server/database.js',
 ];
 
 const errors = [];
@@ -41,17 +41,29 @@ for (const page of pages) {
   }
 }
 
-const dashboardRuntime = await readFile(resolve(root, 'dashboard-runtime.js'), 'utf8');
-if (/dashboard-auth-shell\\.js/.test(dashboardRuntime)) errors.push('dashboard-runtime.js: must not load a second dashboard auth controller');
-if (/admin-auth-guard\\.js/.test(dashboardRuntime)) errors.push('dashboard-runtime.js: must not load a second admin OAuth gate');
+const AUTH_OWNER = 'api/discord-oauth.js';
+const authOwnerSource = await readFile(resolve(root, AUTH_OWNER), 'utf8');
+if (!authOwnerSource.includes('DISCORD_CLIENT_SECRET')) errors.push(`${AUTH_OWNER}: must own the Discord token exchange`);
 const dashboardSource = await readFile(resolve(root, 'dashboard.js'), 'utf8');
-if ((dashboardSource.match(/signInWithOAuth/g) || []).length !== 1) errors.push('dashboard.js: Discord OAuth must have exactly one owner');
-if (!dashboardSource.includes("bound_discord_oauth_started_at")) errors.push('dashboard.js: missing duplicate OAuth-start guard');
-const supabaseSource = await readFile(resolve(root, 'supabase-client.js'), 'utf8');
-if (!supabaseSource.includes('persistSession: true') || !supabaseSource.includes("storage: window.localStorage")) errors.push('supabase-client.js: remembered login must use persistent local storage');
+if ((dashboardSource.match(/startDiscordLogin\(/g) || []).length !== 1) errors.push('dashboard.js: Discord sign-in must have exactly one trigger');
+const authClientCheckSource = await readFile(resolve(root, 'auth-client.js'), 'utf8');
+if ((authClientCheckSource.match(/action=login/g) || []).length !== 1) errors.push('auth-client.js: must be the sole owner of the Discord login URL');
+for (const file of scripts) {
+  if (file === AUTH_OWNER) continue;
+  const source = await readFile(resolve(root, file), 'utf8');
+  if (source.includes('DISCORD_CLIENT_SECRET')) errors.push(`${file}: must not reference the Discord client secret`);
+}
+const authSource = await readFile(resolve(root, 'server/auth.js'), 'utf8');
+for (const flag of ['HttpOnly', 'Secure', 'SameSite=Lax']) {
+  if (!authSource.includes(flag)) errors.push(`server/auth.js: session cookie must set ${flag}`);
+}
 for (const file of scripts.filter(file => file.startsWith('api/'))) {
   const source = await readFile(resolve(root, file), 'utf8');
   if (source.includes('/rest/v1/')) errors.push(`${file}: website data must use Railway Postgres, not Supabase REST`);
+}
+for (const file of scripts) {
+  const source = await readFile(resolve(root, file), 'utf8');
+  if (/supabase\.co|supabase-js|\/auth\/v1\//i.test(source)) errors.push(`${file}: must not reference Supabase - Discord OAuth and sessions are self-hosted now`);
 }
 const databaseSource = await readFile(resolve(root, 'server/database.js'), 'utf8');
 if (!databaseSource.includes('process.env.DATABASE_URL')) errors.push('server/database.js: Railway DATABASE_URL is required');

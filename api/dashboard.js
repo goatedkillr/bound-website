@@ -1,8 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { databaseConfigured, databaseRest, databaseRpc } from '../server/database.js';
+import { getSession, requireSameOrigin } from '../server/auth.js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hpbqoochibnrxzxeuazb.supabase.co';
-const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_CQPZKB4Houc0UPn-sccxOQ_uZTD-X37';
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || process.env.BOUND_BOT_TOKEN;
 const BOUND_OWNER_IDS = new Set(['444659348854013955']);
 const SNOWFLAKE = /^\d{17,20}$/;
@@ -31,15 +30,7 @@ function securityHeaders(res, requestId) {
   res.setHeader('X-Request-Id', requestId);
 }
 function send(res, status, body, requestId) { securityHeaders(res, requestId); return res.status(status).json(body); }
-function bearer(req) { const v = req.headers.authorization || ''; return v.startsWith('Bearer ') ? v.slice(7) : null; }
 function tokenKey(token) { return createHash('sha256').update(String(token || '')).digest('hex').slice(0, 24); }
-function requestOrigin(req) { return String(req.headers.origin || req.headers.referer || ''); }
-function allowedOrigin(req) {
-  const origin = requestOrigin(req);
-  if (!origin) return true;
-  const host = String(req.headers.host || '');
-  try { return new URL(origin).host === host; } catch { return false; }
-}
 function checkBody(req) {
   if (!req.body) return;
   const size = Buffer.byteLength(typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
@@ -61,11 +52,6 @@ async function fetchTimed(url, options = {}) {
     throw error;
   } finally { clearTimeout(timer); }
 }
-async function verifyUser(token) {
-  if (!token) return null;
-  const r = await fetchTimed(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${token}` } });
-  return r.ok ? r.json() : null;
-}
 async function discordGuilds(token) {
   if (!token) throw new HttpError(401, 'Discord connection expired. Sign out and reconnect Discord.');
   const key = tokenKey(token), cached = discordCache.get(key);
@@ -80,7 +66,7 @@ async function discordGuilds(token) {
 }
 function iconUrl(g) { return g?.icon ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.webp?size=128` : null; }
 function compactNumber(v) { const n = Number(v || 0); if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`; if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`; return String(n); }
-function discordUserId(u) { return String(u?.user_metadata?.provider_id || u?.user_metadata?.sub || u?.identities?.[0]?.identity_data?.sub || u?.id || ''); }
+function discordAvatarUrl(userId, avatarHash) { return avatarHash ? `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.${avatarHash.startsWith('a_') ? 'gif' : 'png'}` : null; }
 function validateGuildId(id) { if (!SNOWFLAKE.test(id)) throw new HttpError(400, 'Invalid Discord server ID.'); return id; }
 function validateSnowflakeOrNull(value, label) { const v = String(value || '').trim(); if (!v) return null; if (!SNOWFLAKE.test(v)) throw new HttpError(400, `${label} must be a valid Discord ID.`); return v; }
 async function rest(path, { method = 'GET', body, prefer = 'return=representation' } = {}) {
@@ -252,12 +238,11 @@ export default async function handler(req, res) {
     if (!['GET', 'PATCH', 'POST'].includes(req.method)) return send(res, 405, { error: 'Method not allowed.', request_id: requestId }, requestId);
     if (!databaseConfigured()) return send(res, 503, { error: 'Vercel is missing the Railway DATABASE_URL.', request_id: requestId }, requestId);
     checkBody(req);
-    if (req.method !== 'GET' && !allowedOrigin(req)) return send(res, 403, { error: 'Dashboard write rejected because the request origin did not match.', request_id: requestId }, requestId);
+    if (req.method !== 'GET') requireSameOrigin(req);
 
-    const user = await verifyUser(bearer(req));
+    const user = getSession(req);
     if (!user) return send(res, 401, { error: 'Sign in with Discord first.', request_id: requestId }, requestId);
-    const uid = discordUserId(user);
-    if (!SNOWFLAKE.test(uid)) return send(res, 401, { error: 'Discord identity could not be verified.', request_id: requestId }, requestId);
+    const uid = user.discordUserId;
     const action = String(req.query.action || 'bootstrap');
     const providerToken = String(req.headers['x-discord-provider-token'] || '');
     rateLimit(`${uid}:${req.method === 'GET' ? 'read' : 'write'}`, req.method === 'GET' ? 120 : 30);
@@ -280,7 +265,7 @@ export default async function handler(req, res) {
       }
       const am = new Map(activation.map(x => [x.guild_id, x])), fm = new Map(approvals.map(x => [x.guild_id, x]));
       const reward = await claimDashboardReward(user);
-      const payload = { user: { id: uid, username: user.user_metadata?.user_name || 'Discord user', display_name: user.user_metadata?.full_name || user.user_metadata?.name || user.user_metadata?.user_name || 'Discord user', avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null, is_bound_owner: BOUND_OWNER_IDS.has(uid), faction_leader: Boolean(globalFactionLeader), faction: globalFactionLeader?.faction || null }, reward, guilds: guilds.map(g => { const factionLeader = leaderGuildIds.has(g.id); const permissions = g.owner ? [...DASHBOARD_PERMISSIONS] : [...new Set([...(grantMap.get(g.id) || []), ...(factionLeader ? ['view_dashboard', 'manage_factions'] : [])])]; return { id: g.id, name: g.name, icon_url: iconUrl(g), owner: g.owner, faction_leader: factionLeader, faction_only: factionLeader && !g.owner && !grantMap.get(g.id)?.includes('view_dashboard'), permissions, bound_installed: am.has(g.id), tos_accepted: am.get(g.id)?.tos_accepted || false, faction_status: fm.has(g.id) ? 'approved' : 'awaiting_owner_approval' }; }), request_id: requestId };
+      const payload = { user: { id: uid, username: user.name || 'Discord user', display_name: user.name || 'Discord user', avatar_url: discordAvatarUrl(uid, user.avatar), is_bound_owner: BOUND_OWNER_IDS.has(uid), faction_leader: Boolean(globalFactionLeader), faction: globalFactionLeader?.faction || null }, reward, guilds: guilds.map(g => { const factionLeader = leaderGuildIds.has(g.id); const permissions = g.owner ? [...DASHBOARD_PERMISSIONS] : [...new Set([...(grantMap.get(g.id) || []), ...(factionLeader ? ['view_dashboard', 'manage_factions'] : [])])]; return { id: g.id, name: g.name, icon_url: iconUrl(g), owner: g.owner, faction_leader: factionLeader, faction_only: factionLeader && !g.owner && !grantMap.get(g.id)?.includes('view_dashboard'), permissions, bound_installed: am.has(g.id), tos_accepted: am.get(g.id)?.tos_accepted || false, faction_status: fm.has(g.id) ? 'approved' : 'awaiting_owner_approval' }; }), request_id: requestId };
       // Fold the initially-selected guild's overview into the bootstrap
       // response when the client already knows which guild it wants (e.g.
       // the last one picked, remembered in localStorage) - saves a whole
@@ -436,7 +421,7 @@ export default async function handler(req, res) {
 
     return send(res, 404, { error: 'Unknown dashboard action.', request_id: requestId }, requestId);
   } catch (e) {
-    const status = e instanceof HttpError ? e.status : 500;
+    const status = e?.status && Number.isInteger(e.status) ? e.status : 500;
     console.error(`[dashboard ${requestId}]`, e?.message || e);
     return send(res, status, { error: e instanceof Error ? e.message : 'Unexpected dashboard error.', request_id: requestId }, requestId);
   }

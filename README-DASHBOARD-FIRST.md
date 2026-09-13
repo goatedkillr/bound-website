@@ -1,18 +1,17 @@
 # Bound dashboard – stable live build
 
-This package is designed for the production Vercel + Supabase Auth + Railway setup.
+This package is designed for the production Vercel + Railway setup. Discord OAuth is handled directly by the site (`api/discord-oauth.js`) - there is no external identity provider.
 
 ## Required Vercel environment variables
 
 - `DATABASE_URL` — Railway Postgres public connection URL. This is the website and bot's shared data source of truth.
-- `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` — Supabase Auth project values.
-- `SUPABASE_SERVICE_ROLE_KEY` — used only by authenticated account email/password administration.
-- `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` — used for Discord provider-token refresh.
+- `SESSION_SECRET` — signs the site's own session cookie (`server/auth.js`). Generate once, store as Sensitive; rotating it signs every active session out.
+- `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` — back the whole Discord OAuth flow: login, callback and silent token refresh.
 
 Store secrets as Sensitive values in Vercel and never put them in GitHub or browser code. Railway's `*.railway.internal` hostname cannot be used from Vercel; use `DATABASE_PUBLIC_URL` from the Railway Postgres service as Vercel's `DATABASE_URL`.
 
-## Required Supabase auth setup
-Discord provider enabled with the Bound Discord application. The production site/dashboard URL must be allowed in Authentication > URL Configuration.
+## Required Discord application setup
+In the Discord Developer Portal, add `https://<your-domain>/api/discord-oauth?action=callback` to the application's OAuth2 redirect list (plus any Vercel preview URL used for testing).
 
 ## Live now
 - Discord OAuth session

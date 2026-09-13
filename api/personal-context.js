@@ -1,10 +1,7 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { databaseRest } from '../server/database.js';
+import { getSession } from '../server/auth.js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hpbqoochibnrxzxeuazb.supabase.co';
-const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_CQPZKB4Houc0UPn-sccxOQ_uZTD-X37';
-const REQUEST_TIMEOUT_MS = 12_000;
-const SNOWFLAKE = /^\d{17,20}$/;
 const rateBuckets = new Map();
 
 function securityHeaders(res, requestId) {
@@ -17,8 +14,6 @@ function securityHeaders(res, requestId) {
   res.setHeader('X-Request-Id', requestId);
 }
 function send(res, status, body, requestId) { securityHeaders(res, requestId); return res.status(status).json(body); }
-function bearer(req) { const v = String(req.headers.authorization || ''); return v.startsWith('Bearer ') ? v.slice(7) : null; }
-function tokenKey(token) { return createHash('sha256').update(String(token || '')).digest('hex').slice(0, 24); }
 function rateLimit(key, limit = 45, windowMs = 60_000) {
   const now = Date.now();
   const row = rateBuckets.get(key);
@@ -26,32 +21,16 @@ function rateLimit(key, limit = 45, windowMs = 60_000) {
   row.count += 1;
   if (row.count > limit) { const e = new Error('Too many requests.'); e.status = 429; throw e; }
 }
-async function fetchTimed(url, options = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try { return await fetch(url, { ...options, signal: controller.signal }); }
-  finally { clearTimeout(timer); }
-}
-async function verifyUser(token) {
-  if (!token) return null;
-  const r = await fetchTimed(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${token}` } });
-  return r.ok ? r.json() : null;
-}
-function discordUserId(user) {
-  return String(user?.user_metadata?.provider_id || user?.user_metadata?.sub || user?.identities?.[0]?.identity_data?.sub || user?.id || '');
-}
 const rest = databaseRest;
 
 export default async function handler(req, res) {
   const requestId = randomUUID();
   try {
     if (req.method !== 'GET') return send(res, 405, { error: 'Method not allowed.', request_id: requestId }, requestId);
-    const token = bearer(req);
-    const user = await verifyUser(token);
-    if (!user) return send(res, 401, { error: 'Sign in with Discord first.', request_id: requestId }, requestId);
-    const uid = discordUserId(user);
-    if (!SNOWFLAKE.test(uid)) return send(res, 401, { error: 'Discord identity could not be verified.', request_id: requestId }, requestId);
-    rateLimit(tokenKey(token));
+    const session = getSession(req);
+    if (!session) return send(res, 401, { error: 'Sign in with Discord first.', request_id: requestId }, requestId);
+    const uid = session.discordUserId;
+    rateLimit(uid);
 
     const [safetyRows, membershipRows, userCache] = await Promise.all([
       rest('safety_team?select=user_id,role,active,added_at&active=eq.true&order=added_at.asc'),
@@ -101,7 +80,7 @@ export default async function handler(req, res) {
     return send(res, 200, {
       user: {
         id: uid,
-        display_name: user.user_metadata?.full_name || user.user_metadata?.name || user.user_metadata?.user_name || 'Discord user',
+        display_name: session.name || 'Discord user',
         safety_role: safetyTeam.find(row => row.user_id === uid)?.role || null,
       },
       safety_team: safetyTeam,

@@ -1,19 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { databaseRest } from '../server/database.js';
+import { getSession, requireSameOrigin } from '../server/auth.js';
 
-const PUBLIC_SUPABASE_URL = process.env.SUPABASE_URL || 'https://hpbqoochibnrxzxeuazb.supabase.co';
-const PUBLIC_SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_CQPZKB4Houc0UPn-sccxOQ_uZTD-X37';
 const SNOWFLAKE = /^\d{17,20}$/;
 const TIMEOUT_MS = 12_000;
 const DEFAULT_MODULES = { staff:true,tickets:true,economy:true,subscriptions:true,moderation:true,automation:true,safety:true,levels:true,afk:true,logging:true };
 
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 function send(res,status,body,id){res.setHeader('Cache-Control','no-store, max-age=0');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Request-Id',id);return res.status(status).json(body);}
-function bearer(req){const v=String(req.headers.authorization||'');return v.startsWith('Bearer ')?v.slice(7):null;}
 function cleanText(value,max,fallback=''){const v=String(value??'').trim();if(!v)return fallback;if(v.length>max||/[\u0000-\u001f]/.test(v))throw new HttpError(400,'One of the customisation values is invalid.');return v;}
 async function fetchTimed(url,options={}){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),TIMEOUT_MS);try{return await fetch(url,{...options,signal:controller.signal});}finally{clearTimeout(timer);}}
-async function verifyUser(token){if(!token)return null;const r=await fetchTimed(`${PUBLIC_SUPABASE_URL}/auth/v1/user`,{headers:{apikey:PUBLIC_SUPABASE_KEY,Authorization:`Bearer ${token}`}});return r.ok?r.json():null;}
-function discordUserId(u){return String(u?.user_metadata?.provider_id||u?.user_metadata?.sub||u?.identities?.[0]?.identity_data?.sub||u?.id||'');}
 function isGuildAdmin(g){if(g.owner)return true;const p=BigInt(g.permissions||'0');return Boolean(p&0x8n);}
 async function authorisedGuild(providerToken,guildId){if(!providerToken)throw new HttpError(401,'Discord connection expired. Reconnect Discord.');const r=await fetchTimed('https://discord.com/api/v10/users/@me/guilds',{headers:{Authorization:`Bearer ${providerToken}`}});if(r.status===401||r.status===403)throw new HttpError(401,'Discord connection expired. Reconnect Discord.');if(!r.ok)throw new HttpError(502,'Discord could not verify this server right now.');const guilds=await r.json();const guild=guilds.find(g=>g.id===guildId&&isGuildAdmin(g));if(!guild)throw new HttpError(403,'Only the server owner or a Discord Administrator can control this server.');return guild;}
 async function railwayRest(path,opts){try{return await databaseRest(path,opts);}catch(error){throw new HttpError(Number(error?.status||502),error?.message||'Railway database request failed.');}}
@@ -26,8 +22,9 @@ async function getControl(guildId){const rows=await safe(()=>privateRest(`bound_
 
 export default async function handler(req,res){const requestId=randomUUID();try{
   if(!['GET','PATCH'].includes(req.method))return send(res,405,{error:'Method not allowed.',request_id:requestId},requestId);
+  if(req.method!=='GET')requireSameOrigin(req);
   const guildId=String(req.query.guild_id||'');if(!SNOWFLAKE.test(guildId))throw new HttpError(400,'Invalid Discord server ID.');
-  const user=await verifyUser(bearer(req));const uid=discordUserId(user);if(!user||!SNOWFLAKE.test(uid))throw new HttpError(401,'Sign in with Discord first.');
+  const session=getSession(req);if(!session)throw new HttpError(401,'Sign in with Discord first.');const uid=session.discordUserId;
   const guild=await authorisedGuild(String(req.headers['x-discord-provider-token']||''),guildId);
   const approval=await getEntitlement(guildId);
   if(!approval)return send(res,200,{guild:{id:guild.id,name:guild.name},entitled:false,private_build:null,request_id:requestId},requestId);
@@ -54,4 +51,4 @@ export default async function handler(req,res){const requestId=randomUUID();try{
   ]);
   const openTickets=tickets.filter(t=>t.status==='open'),ratings=tickets.map(t=>Number(t.rating||0)).filter(Boolean),activeStaff=staffShifts.filter(s=>!s.clocked_out_at&&s.status!=='closed'),activeSubscriptions=subscriptions.filter(s=>s.active!==false),tierCounts=activeSubscriptions.reduce((acc,s)=>{acc[s.tier||'unknown']=(acc[s.tier||'unknown']||0)+1;return acc;},{});
   return send(res,200,{guild:{id:guild.id,name:guild.name},entitled:true,approval:{guild_id:approval.guild_id,granted_at:approval.granted_at},private_build:{guild_id:guildId,display_name:control.bot_display_name||registered?.display_name||guild.name,brand:registered?.brand||'custom',premium:true,modules,control,stats:{tickets:{total:tickets.length,open:openTickets.length,claimed:openTickets.filter(t=>t.claimed_by).length,average_rating:ratings.length?Number((ratings.reduce((a,b)=>a+b,0)/ratings.length).toFixed(1)):null},staff:{members:staffMembers.length,active_shifts:activeStaff.length},economy:{users:economy.length,total_nugs:sum(economy,'total')||sum(economy,'wallet')+sum(economy,'bank')},subscriptions:{active:activeSubscriptions.length,tiers:tierCounts},moderation:{cases:moderation.length}}},configured:true,request_id:requestId},requestId);
-}catch(e){const status=e instanceof HttpError?e.status:500;console.error(`[private-dashboard ${requestId}]`,e?.message||e);return send(res,status,{error:e instanceof Error?e.message:'Unexpected private dashboard error.',request_id:requestId},requestId);}}
+}catch(e){const status=e?.status&&Number.isInteger(e.status)?e.status:500;console.error(`[private-dashboard ${requestId}]`,e?.message||e);return send(res,status,{error:e instanceof Error?e.message:'Unexpected private dashboard error.',request_id:requestId},requestId);}}
