@@ -14,6 +14,7 @@ const scripts = [
   'api/account.js', 'api/dashboard.js', 'api/discord-refresh.js', 'api/gag-control.js',
   'api/leaderboards.js', 'api/personal-context.js',
   'api/private.js', 'api/profile.js', 'api/reach.js', 'api/safety-stats.js', 'api/tickets.js',
+  'server/database.js',
 ];
 
 const errors = [];
@@ -48,6 +49,12 @@ if ((dashboardSource.match(/signInWithOAuth/g) || []).length !== 1) errors.push(
 if (!dashboardSource.includes("bound_discord_oauth_started_at")) errors.push('dashboard.js: missing duplicate OAuth-start guard');
 const supabaseSource = await readFile(resolve(root, 'supabase-client.js'), 'utf8');
 if (!supabaseSource.includes('persistSession: true') || !supabaseSource.includes("storage: window.localStorage")) errors.push('supabase-client.js: remembered login must use persistent local storage');
+for (const file of scripts.filter(file => file.startsWith('api/'))) {
+  const source = await readFile(resolve(root, file), 'utf8');
+  if (source.includes('/rest/v1/')) errors.push(`${file}: website data must use Railway Postgres, not Supabase REST`);
+}
+const databaseSource = await readFile(resolve(root, 'server/database.js'), 'utf8');
+if (!databaseSource.includes('process.env.DATABASE_URL')) errors.push('server/database.js: Railway DATABASE_URL is required');
 
 if (errors.length) { console.error(errors.join('\n')); process.exit(1); }
 console.log(`Checked ${scripts.length} JavaScript files and ${pages.length} HTML pages.`);

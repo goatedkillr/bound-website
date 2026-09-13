@@ -1,6 +1,7 @@
 ## What is live now
 
-- Supabase Discord login/session
+- Supabase Auth Discord login/session
+- Railway Postgres shared with the Bound bot for all live data and settings
 - Discord server permission checking
 - Bound-installed server detection via `bound_guild_activation`
 - Existing `guild_settings.prefix` read/write

@@ -9,7 +9,7 @@ The site package is a working front-end website:
 - `styles.css` / `script.js` — public website styling and interactions
 - `dashboard.css` / `dashboard.js` — dashboard styling and interactions
 
-You can upload this as a static site immediately. The dashboard currently uses demo data. To show real Discord users, guilds, tickets, economy, moderation and safety data, connect the front end to your API/Supabase after deployment.
+The site is deployed on Vercel. Its server-side API reads and writes the same Railway Postgres database as the Bound bot, while Supabase remains the Discord identity provider.
 
 ---
 
@@ -166,7 +166,7 @@ Recommended architecture:
 3. Backend obtains/validates the guilds they can manage.
 4. Backend checks that Bound is installed in those guilds.
 5. Dashboard only shows guilds where the user has the permissions you require.
-6. Dashboard requests settings from your backend/Supabase.
+6. Dashboard requests settings from the Vercel API backed by Railway Postgres.
 7. Any change is sent to an authenticated server endpoint.
 8. The server validates permission again before writing it.
 
@@ -174,7 +174,7 @@ Never trust a guild ID or `isAdmin=true` value sent from browser JavaScript with
 
 ---
 
-# Part 7 — Connect the dashboard to your existing Supabase data
+# Part 7 — Connect Vercel to Railway Postgres
 
 Your current dashboard panels can map to tables/services such as:
 
@@ -190,13 +190,13 @@ Your current dashboard panels can map to tables/services such as:
 - ownership/profile configuration
 - audit events
 
-Use Supabase Row Level Security for client-readable information. Anything privileged should go through your API/Edge Function using the service role key on the server only.
+Set Vercel's server-only `DATABASE_URL` to the Railway Postgres service's `DATABASE_PUBLIC_URL`. Do not use the `*.railway.internal` URL outside Railway and never expose either connection string to the browser.
 
-A good pattern is:
+The production request path is:
 
-Browser → authenticated API/Edge Function → permission check → Supabase → response
+Browser → Supabase Auth session → Vercel Function → Discord permission check → Railway Postgres → response
 
-rather than exposing unrestricted update access directly from the browser.
+All SQL is executed server-side with bound parameters. The browser never connects directly to Postgres.
 
 ---
 
@@ -209,7 +209,7 @@ Example:
 1. Admin changes `economy_enabled` in the dashboard.
 2. Dashboard sends an authenticated update to your API.
 3. API checks the user can manage that guild.
-4. API saves the setting in Supabase.
+4. API saves the setting in Railway Postgres.
 5. Bound reads that setting when a command runs (or refreshes its settings cache).
 6. `/work`, `/fish`, `/heist`, etc. immediately obey that guild's current configuration.
 
@@ -220,16 +220,16 @@ This avoids trying to communicate directly from a visitor's browser to the Disco
 # Part 9 — Production security checklist
 
 - Never commit the Discord bot token.
-- Never expose `SUPABASE_SERVICE_ROLE_KEY` in HTML/JS.
+- Never expose `DATABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` in HTML/JS.
 - Keep Discord Client Secret server-side/Supabase-side.
-- Enable RLS on user-facing Supabase tables.
+- Keep all Railway Postgres access behind authenticated Vercel Functions.
 - Validate the signed-in user's Discord ID on the server.
 - Check guild permissions on every privileged change.
 - Protect safety/moderation endpoints separately from ordinary profile endpoints.
 - Log dashboard changes to the audit system.
 - Use HTTPS only in production.
 - Keep your domain/DNS registrar account protected with 2FA.
-- Back up important Supabase data before major schema changes.
+- Back up Railway Postgres before major schema changes.
 
 ---
 

@@ -104,7 +104,7 @@
     document.addEventListener('click',event=>{if(event.target?.closest?.('[data-guild-id]'))setTimeout(loadTicketSurface,250)},true);
     const serverName=document.getElementById('serverName');if(serverName)new MutationObserver(()=>setTimeout(loadTicketSurface,80)).observe(serverName,{childList:true,subtree:true,characterData:true});
     const overview=document.getElementById('view-overview');
-    if(overview&&!document.getElementById('finishTrustStrip'))overview.insertAdjacentHTML('beforeend',`<div class="finish-banner" id="finishTrustStrip" style="margin-top:12px"><div><span class="finish-kicker">BUILT TO STAY CONNECTED</span><h3>Discord identity Supabase data and Bound permissions</h3><p>The control centre keeps personal access persistent while protected server changes require current Discord permission.</p></div><div class="finish-security"><i></i> Connection protected</div></div>`);
+    if(overview&&!document.getElementById('finishTrustStrip'))overview.insertAdjacentHTML('beforeend',`<div class="finish-banner" id="finishTrustStrip" style="margin-top:12px"><div><span class="finish-kicker">BUILT TO STAY CONNECTED</span><h3>Discord identity Railway data and Bound permissions</h3><p>The control centre keeps personal access persistent while protected server changes require current Discord permission.</p></div><div class="finish-security"><i></i> Connection protected</div></div>`);
     loadPersonalContext();
     loadTicketSurface();
   }

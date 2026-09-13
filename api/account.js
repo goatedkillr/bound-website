@@ -1,3 +1,5 @@
+import { databaseRest } from '../server/database.js';
+
 const SUPABASE_URL=process.env.SUPABASE_URL||'https://hpbqoochibnrxzxeuazb.supabase.co';
 const PUBLISHABLE=process.env.SUPABASE_PUBLISHABLE_KEY||'sb_publishable_CQPZKB4Houc0UPn-sccxOQ_uZTD-X37';
 const SERVICE=process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -11,11 +13,11 @@ function bearer(req){const v=String(req.headers.authorization||'');return v.star
 async function fetchJson(url,opts={}){const r=await fetch(url,opts);const t=await r.text();let d=null;try{d=t?JSON.parse(t):null}catch{d=t}if(!r.ok){const e=new Error(d?.message||d?.error_description||d?.error||`Request failed (${r.status})`);e.status=r.status;throw e}return d}
 async function authUser(token){if(!token)return null;try{return await fetchJson(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:PUBLISHABLE,Authorization:`Bearer ${token}`}})}catch{return null}}
 function metaDiscordId(u){const identity=u?.identities?.find?.(x=>x.provider==='discord');return String(identity?.identity_data?.sub||identity?.identity_data?.id||'')}
-async function rest(path,{method='GET',body,prefer='return=representation'}={}){if(!SERVICE)throw new Error('SUPABASE_SERVICE_ROLE_KEY is missing.');return fetchJson(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{apikey:SERVICE,Authorization:`Bearer ${SERVICE}`,'Content-Type':'application/json',Prefer:prefer},body:body?JSON.stringify(body):undefined})}
+const rest=databaseRest;
 async function accountFor(user){const rows=await rest(`dashboard_accounts?select=*&auth_user_id=eq.${encodeURIComponent(user.id)}&limit=1`);return rows?.[0]||null}
 async function deletionRequestFor(uid,{pendingOnly=false}={}){if(!uid)return null;const status=pendingOnly?'&status=eq.pending':'';const rows=await rest(`data_deletion_requests?select=id,status,requested_at,reviewed_at,source&user_id=eq.${encodeURIComponent(uid)}${status}&order=requested_at.desc&limit=1`);return rows?.[0]||null}
 async function resolveDiscordId(user,account){const id=String(account?.discord_user_id||metaDiscordId(user)||'');return SNOWFLAKE.test(id)?id:null}
-async function updateAuthUser(id,body){return fetchJson(`${SUPABASE_URL}/auth/v1/admin/users/${id}`,{method:'PUT',headers:{apikey:SERVICE,Authorization:`Bearer ${SERVICE}`,'Content-Type':'application/json'},body:JSON.stringify(body)})}
+async function updateAuthUser(id,body){if(!SERVICE)throw new Error('SUPABASE_SERVICE_ROLE_KEY is missing for Auth administration.');return fetchJson(`${SUPABASE_URL}/auth/v1/admin/users/${id}`,{method:'PUT',headers:{apikey:SERVICE,Authorization:`Bearer ${SERVICE}`,'Content-Type':'application/json'},body:JSON.stringify(body)})}
 function normUsername(v){return String(v||'').trim().toLowerCase()}
 function duration(s){s=Number(s||0);const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);return [d&&`${d}d`,h&&`${h}h`,m&&`${m}m`].filter(Boolean).join(' ')||`${s}s`}
 function achievement(name,description,current,target,unit){const unlocked=Number(current)>=target;return{name,description,current:Number(current||0),target,unit:unit||null,unlocked,progress:Math.min(100,Math.floor((Number(current||0)/target)*100))}}

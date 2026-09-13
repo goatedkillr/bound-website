@@ -1,6 +1,6 @@
 # Bound Website + Dashboard
 
-This package contains the Bound landing website and a custom dashboard concept.
+This package contains the live Bound landing website and dashboard.
 
 ## Files
 - `index.html` — public landing page
@@ -8,7 +8,8 @@ This package contains the Bound landing website and a custom dashboard concept.
 - `script.js` — landing page interactions
 - `dashboard.html` — Bound Control Centre dashboard
 - `dashboard.css` — dashboard design
-- `dashboard.js` — dashboard navigation and demo interactions
+- `dashboard.js` — dashboard navigation and live interactions
+- `api/` — authenticated Vercel Functions backed by Railway Postgres
 
 ## Run locally
 You can double-click `index.html`, but using a local server is better:
@@ -19,8 +20,14 @@ npx serve .
 
 Then open the local address shown in the terminal. The Dashboard button on the landing page opens `dashboard.html`.
 
-## Important
-The dashboard in this package is the finished front-end design. The displayed figures are demo data. Before production, connect it to Discord login and your Supabase data/API. Never put the Discord bot token or the Supabase service-role key in browser JavaScript.
+## Production architecture
+
+- Vercel serves the static site and server-side API functions.
+- Supabase Auth owns Discord login and sessions.
+- Railway Postgres is the shared source of truth for the website and Bound bot.
+- Every privileged API request re-checks the signed-in user and Discord guild permissions server-side.
+
+Set `DATABASE_URL` in Vercel to Railway's public Postgres URL. Keep it, the Discord client secret, bot token, and Supabase Auth service-role key out of browser JavaScript and GitHub. See `.env.example` and `README-DASHBOARD-FIRST.md`.
 
 ## Live Bound links
 

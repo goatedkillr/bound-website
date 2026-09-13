@@ -1,10 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { databaseRest } from '../server/database.js';
 
 const PUBLIC_SUPABASE_URL=process.env.SUPABASE_URL||'https://hpbqoochibnrxzxeuazb.supabase.co';
 const PUBLIC_SUPABASE_KEY=process.env.SUPABASE_PUBLISHABLE_KEY||'sb_publishable_CQPZKB4Houc0UPn-sccxOQ_uZTD-X37';
-const PUBLIC_SERVICE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY;
-const PRIVATE_SUPABASE_URL=process.env.PRIVATE_SUPABASE_URL||'https://hobmczasripcpemntobi.supabase.co';
-const PRIVATE_SERVICE_KEY=process.env.PRIVATE_SUPABASE_SERVICE_ROLE_KEY;
 const DARK_SIDE_GUILD_ID='1222024653795496006';
 const SNOWFLAKE=/^\d{17,20}$/;
 const HEX=/^#?[0-9a-fA-F]{6}$/;
@@ -32,10 +30,10 @@ async function fetchTimed(url,options={}){const c=new AbortController();const t=
 async function json(url,options={}){const r=await fetchTimed(url,options);const text=await r.text();let data=null;try{data=text?JSON.parse(text):null}catch{data=text}if(!r.ok)throw new HttpError(r.status>=500?502:r.status,data?.message||data?.error_description||data?.error||'Connected service request failed');return data}
 async function verifyUser(token){if(!token)return null;try{return await json(`${PUBLIC_SUPABASE_URL}/auth/v1/user`,{headers:{apikey:PUBLIC_SUPABASE_KEY,Authorization:`Bearer ${token}`}})}catch{return null}}
 function discordUserId(u){return String(u?.user_metadata?.provider_id||u?.user_metadata?.sub||u?.identities?.find?.(x=>x.provider==='discord')?.identity_data?.sub||'')}
-async function rest(base,key,path,{method='GET',body,prefer='return=representation'}={}){if(!key)throw new HttpError(503,'Dashboard database connection is not configured');return json(`${base}/rest/v1/${path}`,{method,headers:{apikey:key,Authorization:`Bearer ${key}`,'Content-Type':'application/json',Prefer:prefer},body:body?JSON.stringify(body):undefined})}
-const publicRest=(path,opts)=>rest(PUBLIC_SUPABASE_URL,PUBLIC_SERVICE_KEY,path,opts);
-const privateRest=(path,opts)=>rest(PRIVATE_SUPABASE_URL,PRIVATE_SERVICE_KEY,path,opts);
-async function isPremium(guildId){if(!PUBLIC_SERVICE_KEY||!guildId)return false;const rows=await publicRest(`premium_dashboard_guilds?select=guild_id&guild_id=eq.${guildId}&active=eq.true&limit=1`);return Boolean(rows?.length)}
+async function railwayRest(path,opts){try{return await databaseRest(path,opts);}catch(error){throw new HttpError(Number(error?.status||502),error?.message||'Railway database request failed.');}}
+const publicRest=railwayRest;
+const privateRest=railwayRest;
+async function isPremium(guildId){if(!guildId)return false;const rows=await publicRest(`premium_dashboard_guilds?select=guild_id&guild_id=eq.${guildId}&active=eq.true&limit=1`);return Boolean(rows?.length)}
 function isAdmin(g){if(g?.owner)return true;try{const p=BigInt(g?.permissions||'0');return Boolean((p&0x8n)||(p&0x20n))}catch{return false}}
 async function requireGuildAdmin(providerToken,guildId){if(!providerToken)throw new HttpError(401,'Refresh Discord before using premium ticket controls');const guilds=await json('https://discord.com/api/v10/users/@me/guilds',{headers:{Authorization:`Bearer ${providerToken}`}});const guild=(guilds||[]).find(g=>g.id===guildId&&isAdmin(g));if(!guild)throw new HttpError(403,'You no longer have permission to manage this server');return guild}
 function text(v,max,fallback=''){const s=String(v??'').trim();if(!s)return fallback;if(s.length>max||/[\u0000-\u001f]/.test(s))throw new HttpError(400,'One of the ticket values is invalid.');return s}

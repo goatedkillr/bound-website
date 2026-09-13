@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { databaseRest } from '../server/database.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hpbqoochibnrxzxeuazb.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_CQPZKB4Houc0UPn-sccxOQ_uZTD-X37';
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const REQUEST_TIMEOUT_MS = 12_000;
 const SNOWFLAKE = /^\d{17,20}$/;
 const rateBuckets = new Map();
@@ -40,15 +40,7 @@ async function verifyUser(token) {
 function discordUserId(user) {
   return String(user?.user_metadata?.provider_id || user?.user_metadata?.sub || user?.identities?.[0]?.identity_data?.sub || user?.id || '');
 }
-async function rest(path) {
-  if (!SERVICE_KEY) { const e = new Error('Dashboard database connection is not configured.'); e.status = 500; throw e; }
-  const r = await fetchTimed(`${SUPABASE_URL}/rest/v1/${path}`, { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } });
-  const text = await r.text();
-  let data = [];
-  if (text) { try { data = JSON.parse(text); } catch { data = []; } }
-  if (!r.ok) { const e = new Error(data?.message || 'Database request failed.'); e.status = r.status >= 500 ? 502 : r.status; throw e; }
-  return data;
-}
+const rest = databaseRest;
 
 export default async function handler(req, res) {
   const requestId = randomUUID();

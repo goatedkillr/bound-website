@@ -1,10 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { databaseRest } from '../server/database.js';
 
 const PUBLIC_SUPABASE_URL = process.env.SUPABASE_URL || 'https://hpbqoochibnrxzxeuazb.supabase.co';
 const PUBLIC_SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_CQPZKB4Houc0UPn-sccxOQ_uZTD-X37';
-const PUBLIC_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const PRIVATE_SUPABASE_URL = process.env.PRIVATE_SUPABASE_URL || 'https://hobmczasripcpemntobi.supabase.co';
-const PRIVATE_SERVICE_KEY = process.env.PRIVATE_SUPABASE_SERVICE_ROLE_KEY;
 const SNOWFLAKE = /^\d{17,20}$/;
 const TIMEOUT_MS = 12_000;
 const DEFAULT_MODULES = { staff:true,tickets:true,economy:true,subscriptions:true,moderation:true,automation:true,safety:true,levels:true,afk:true,logging:true };
@@ -18,12 +16,12 @@ async function verifyUser(token){if(!token)return null;const r=await fetchTimed(
 function discordUserId(u){return String(u?.user_metadata?.provider_id||u?.user_metadata?.sub||u?.identities?.[0]?.identity_data?.sub||u?.id||'');}
 function isGuildAdmin(g){if(g.owner)return true;const p=BigInt(g.permissions||'0');return Boolean(p&0x8n);}
 async function authorisedGuild(providerToken,guildId){if(!providerToken)throw new HttpError(401,'Discord connection expired. Reconnect Discord.');const r=await fetchTimed('https://discord.com/api/v10/users/@me/guilds',{headers:{Authorization:`Bearer ${providerToken}`}});if(r.status===401||r.status===403)throw new HttpError(401,'Discord connection expired. Reconnect Discord.');if(!r.ok)throw new HttpError(502,'Discord could not verify this server right now.');const guilds=await r.json();const guild=guilds.find(g=>g.id===guildId&&isGuildAdmin(g));if(!guild)throw new HttpError(403,'Only the server owner or a Discord Administrator can control this server.');return guild;}
-async function serviceRest(baseUrl,key,path,{method='GET',body,prefer='return=representation'}={}){if(!key)throw new HttpError(503,'A required dashboard database connection is not configured.');const r=await fetchTimed(`${baseUrl}/rest/v1/${path}`,{method,headers:{apikey:key,Authorization:`Bearer ${key}`,'Content-Type':'application/json',Prefer:prefer},body:body?JSON.stringify(body):undefined});const text=await r.text();let data=null;if(text){try{data=JSON.parse(text);}catch{data=text;}}if(!r.ok)throw new HttpError(r.status>=500?502:r.status,'Dashboard database request failed.');return data;}
-const publicRest=(path,opts)=>serviceRest(PUBLIC_SUPABASE_URL,PUBLIC_SERVICE_KEY,path,opts);
-const privateRest=(path,opts)=>serviceRest(PRIVATE_SUPABASE_URL,PRIVATE_SERVICE_KEY,path,opts);
+async function railwayRest(path,opts){try{return await databaseRest(path,opts);}catch(error){throw new HttpError(Number(error?.status||502),error?.message||'Railway database request failed.');}}
+const publicRest=railwayRest;
+const privateRest=railwayRest;
 async function safe(fn,fallback){try{return await fn();}catch(e){console.error('private dashboard optional query:',e?.message||e);return fallback;}}
 function sum(rows,key){return rows.reduce((n,row)=>n+Number(row?.[key]||0),0);}
-async function getEntitlement(guildId){if(!PUBLIC_SERVICE_KEY)throw new HttpError(503,'Premium access validation is not configured.');const rows=await publicRest(`premium_dashboard_guilds?select=guild_id,granted_user_id,granted_by,granted_at,active,source_grant_id,note&guild_id=eq.${guildId}&active=eq.true&limit=1`);return rows?.[0]||null;}
+async function getEntitlement(guildId){const rows=await publicRest(`premium_dashboard_guilds?select=guild_id,granted_user_id,granted_by,granted_at,active,source_grant_id,note&guild_id=eq.${guildId}&active=eq.true&limit=1`);return rows?.[0]||null;}
 async function getControl(guildId){const rows=await safe(()=>privateRest(`bound_private_build_controls?select=*&guild_id=eq.${guildId}&limit=1`),[]);const row=rows?.[0]||null;return{guild_id:guildId,modules:{...DEFAULT_MODULES,...(row?.modules||{})},currency_name:row?.currency_name||'Bonds',currency_icon:row?.currency_icon||'<a:xo_2pinkweedd:1329163451637170229>',bot_display_name:row?.bot_display_name||null,bot_avatar_url:row?.bot_avatar_url||null,command_prefix:row?.command_prefix||null};}
 
 export default async function handler(req,res){const requestId=randomUUID();try{
@@ -33,8 +31,6 @@ export default async function handler(req,res){const requestId=randomUUID();try{
   const guild=await authorisedGuild(String(req.headers['x-discord-provider-token']||''),guildId);
   const approval=await getEntitlement(guildId);
   if(!approval)return send(res,200,{guild:{id:guild.id,name:guild.name},entitled:false,private_build:null,request_id:requestId},requestId);
-  if(!PRIVATE_SERVICE_KEY)return send(res,200,{guild:{id:guild.id,name:guild.name},entitled:true,configured:false,private_build:{display_name:guild.name,premium:true,modules:DEFAULT_MODULES,control:{modules:DEFAULT_MODULES,currency_name:'Bonds',currency_icon:'<a:xo_2pinkweedd:1329163451637170229>'},stats:{}},request_id:requestId},requestId);
-
   if(req.method==='PATCH'){
     const current=await getControl(guildId),patch=req.body||{},modules={...current.modules};
     if(patch.modules&&typeof patch.modules==='object')for(const key of Object.keys(DEFAULT_MODULES))if(typeof patch.modules[key]==='boolean')modules[key]=patch.modules[key];

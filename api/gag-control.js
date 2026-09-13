@@ -1,6 +1,7 @@
+import { databaseRest } from '../server/database.js';
+
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hpbqoochibnrxzxeuazb.supabase.co';
 const PUBLIC_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_CQPZKB4Houc0UPn-sccxOQ_uZTD-X37';
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SNOWFLAKE=/^\d{17,20}$/;
 
 function send(res,status,body){res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');return res.status(status).json(body);}
@@ -9,7 +10,7 @@ async function verifyUser(token){if(!token)return null;const r=await fetch(`${SU
 function discordUserId(u){return String(u?.user_metadata?.provider_id||u?.user_metadata?.sub||u?.identities?.[0]?.identity_data?.sub||'');}
 function isAdmin(g){if(g.owner)return true;const p=BigInt(g.permissions||'0');return Boolean(p&0x8n);}
 async function verifyGuild(providerToken,guildId){if(!providerToken)throw Object.assign(new Error('Reconnect Discord to manage this server.'),{status:401});const r=await fetch('https://discord.com/api/v10/users/@me/guilds',{headers:{Authorization:`Bearer ${providerToken}`}});if(!r.ok)throw Object.assign(new Error('Discord could not verify your server access.'),{status:r.status===401?401:502});const guilds=await r.json();const g=guilds.find(x=>x.id===guildId&&isAdmin(x));if(!g)throw Object.assign(new Error('Only the server owner or a Discord Administrator can control gag settings.'),{status:403});return g;}
-async function rest(path,{method='GET',body,prefer='return=representation'}={}){if(!SERVICE_KEY)throw new Error('Dashboard database connection is missing.');const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{method,headers:{apikey:SERVICE_KEY,Authorization:`Bearer ${SERVICE_KEY}`,'Content-Type':'application/json',Prefer:prefer},body:body?JSON.stringify(body):undefined});const text=await r.text();let data=null;if(text){try{data=JSON.parse(text)}catch{data=text}}if(!r.ok)throw Object.assign(new Error(data?.message||'Database request failed.'),{status:r.status});return data;}
+const rest=databaseRest;
 
 export default async function handler(req,res){
   try{

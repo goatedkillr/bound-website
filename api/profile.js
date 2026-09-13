@@ -1,15 +1,16 @@
+import { databaseConfigured, databaseRest } from '../server/database.js';
+
 const SUPABASE_URL=process.env.SUPABASE_URL||'https://hpbqoochibnrxzxeuazb.supabase.co';
 const PUBLISHABLE=process.env.SUPABASE_PUBLISHABLE_KEY||'sb_publishable_CQPZKB4Houc0UPn-sccxOQ_uZTD-X37';
-const SERVICE=process.env.SUPABASE_SERVICE_ROLE_KEY;
 function send(res,status,body){res.setHeader('Cache-Control','private, no-store');return res.status(status).json(body)}
 function bearer(req){const v=req.headers.authorization||'';return v.startsWith('Bearer ')?v.slice(7):null}
 async function userFor(token){if(!token)return null;const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:{apikey:PUBLISHABLE,Authorization:`Bearer ${token}`}});return r.ok?r.json():null}
 function discordId(u){return String(u?.user_metadata?.provider_id||u?.user_metadata?.sub||u?.identities?.[0]?.identity_data?.sub||'')}
-async function rest(path){const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:{apikey:SERVICE,Authorization:`Bearer ${SERVICE}`}});const text=await r.text();let d=[];try{d=text?JSON.parse(text):[]}catch{}if(!r.ok)throw new Error(d?.message||`Supabase ${r.status}`);return d}
+const rest=databaseRest;
 async function safe(fn,f=[]){try{return await fn()}catch(e){console.error(e);return f}}
 export default async function handler(req,res){try{
  if(req.method!=='GET')return send(res,405,{error:'Method not allowed.'});
- if(!SERVICE)return send(res,500,{error:'Missing SUPABASE_SERVICE_ROLE_KEY.'});
+ if(!databaseConfigured())return send(res,503,{error:'Missing Railway DATABASE_URL.'});
  const authUser=await userFor(bearer(req));if(!authUser)return send(res,401,{error:'Sign in first.'});
  const uid=discordId(authUser);if(!uid)return send(res,400,{error:'Discord identity unavailable.'});
  const [profiles,relationships,gagStats,activeGags,rpGiven,rpReceived,cache]=await Promise.all([

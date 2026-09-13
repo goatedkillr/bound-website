@@ -1,5 +1,4 @@
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hpbqoochibnrxzxeuazb.supabase.co';
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+import { databaseRest } from '../server/database.js';
 
 function send(res,status,body){
   res.setHeader('Cache-Control','public, max-age=30, s-maxage=60, stale-while-revalidate=120');
@@ -7,12 +6,7 @@ function send(res,status,body){
   return res.status(status).json(body);
 }
 
-async function rest(path){
-  if(!SERVICE_KEY) throw new Error('Leaderboard database connection is not configured.');
-  const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:{apikey:SERVICE_KEY,Authorization:`Bearer ${SERVICE_KEY}`}});
-  if(!r.ok) throw new Error(`Leaderboard query failed (${r.status}).`);
-  return r.json();
-}
+const rest=databaseRest;
 
 export default async function handler(req,res){
   if(req.method!=='GET') return send(res,405,{error:'Method not allowed.'});

@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { databaseConfigured, databaseRest, databaseRpc } from '../server/database.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hpbqoochibnrxzxeuazb.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_CQPZKB4Houc0UPn-sccxOQ_uZTD-X37';
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || process.env.BOUND_BOT_TOKEN;
 const BOUND_OWNER_IDS = new Set(['444659348854013955']);
 const SNOWFLAKE = /^\d{17,20}$/;
@@ -84,15 +84,12 @@ function discordUserId(u) { return String(u?.user_metadata?.provider_id || u?.us
 function validateGuildId(id) { if (!SNOWFLAKE.test(id)) throw new HttpError(400, 'Invalid Discord server ID.'); return id; }
 function validateSnowflakeOrNull(value, label) { const v = String(value || '').trim(); if (!v) return null; if (!SNOWFLAKE.test(v)) throw new HttpError(400, `${label} must be a valid Discord ID.`); return v; }
 async function rest(path, { method = 'GET', body, prefer = 'return=representation' } = {}) {
-  if (!SERVICE_KEY) throw new HttpError(500, 'Vercel is missing SUPABASE_SERVICE_ROLE_KEY.');
-  const r = await fetchTimed(`${SUPABASE_URL}/rest/v1/${path}`, { method, headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json', Prefer: prefer }, body: body ? JSON.stringify(body) : undefined });
-  const text = await r.text(); let data = null;
-  if (text) { try { data = JSON.parse(text); } catch { data = text; } }
-  if (!r.ok) throw new HttpError(r.status >= 500 ? 502 : r.status, typeof data === 'string' ? 'Database request failed.' : (data?.message || `Database request failed (${r.status})`));
-  return data;
+  try { return await databaseRest(path, { method, body, prefer }); }
+  catch (error) { throw new HttpError(Number(error?.status || 502), error?.message || 'Railway database request failed.'); }
 }
 async function rpc(name, body) {
-  return rest(`rpc/${name}`, { method: 'POST', body });
+  try { return await databaseRpc(name, body); }
+  catch (error) { throw new HttpError(Number(error?.status || 502), error?.message || 'Railway database function failed.'); }
 }
 async function safe(q, f) { try { return await q(); } catch (e) { console.error('Optional dashboard query failed:', e?.message || e); return f; } }
 async function permissionGrant(guildId, userId) {
@@ -253,7 +250,7 @@ export default async function handler(req, res) {
   try {
     securityHeaders(res, requestId);
     if (!['GET', 'PATCH', 'POST'].includes(req.method)) return send(res, 405, { error: 'Method not allowed.', request_id: requestId }, requestId);
-    if (!SERVICE_KEY) return send(res, 500, { error: 'Vercel is missing SUPABASE_SERVICE_ROLE_KEY.', request_id: requestId }, requestId);
+    if (!databaseConfigured()) return send(res, 503, { error: 'Vercel is missing the Railway DATABASE_URL.', request_id: requestId }, requestId);
     checkBody(req);
     if (req.method !== 'GET' && !allowedOrigin(req)) return send(res, 403, { error: 'Dashboard write rejected because the request origin did not match.', request_id: requestId }, requestId);
 
