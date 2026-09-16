@@ -8,7 +8,7 @@ const HEX=/^#?[0-9a-fA-F]{6}$/;
 const TIMEOUT_MS=12_000;
 
 const DEFAULT_SETTINGS={
-  category_id:'',log_channel_id:'',rating_channel_id:'',verification_rating_channel_id:'',staff_role_id:'',
+  category_id:'',log_channel_id:'',rating_channel_id:'',verification_rating_channel_id:'',support_staff_role_ids:[],verify_staff_role_ids:[],
   rating_title:'Please Rate {staff_name}',
   rating_description:'Your support ticket **#{ticket_id}** was successfully closed.\n\nPlease rate {staff} based on your experience:\n**1 ⭐ — Bad**\n**2 ⭐ — Poor**\n**3 ⭐ — Okay**\n**4 ⭐ — Good**\n**5 ⭐ — Perfect**',
   rating_thumbnail_url:'{user_icon}',rating_image_url:'',rating_footer:'Bound • Support Experience',
@@ -34,6 +34,7 @@ function isAdmin(g){if(g?.owner)return true;try{const p=BigInt(g?.permissions||'
 async function requireGuildAdmin(providerToken,guildId){if(!providerToken)throw new HttpError(401,'Refresh Discord before using premium ticket controls');const guilds=await json('https://discord.com/api/v10/users/@me/guilds',{headers:{Authorization:`Bearer ${providerToken}`}});const guild=(guilds||[]).find(g=>g.id===guildId&&isAdmin(g));if(!guild)throw new HttpError(403,'You no longer have permission to manage this server');return guild}
 function text(v,max,fallback=''){const s=String(v??'').trim();if(!s)return fallback;if(s.length>max||/[\u0000-\u001f]/.test(s))throw new HttpError(400,'One of the ticket values is invalid.');return s}
 function maybeSnowflake(v){const s=String(v??'').trim();if(!s)return'';if(!SNOWFLAKE.test(s))throw new HttpError(400,'Channel, role and category fields must be Discord IDs.');return s}
+function snowflakeIds(v){if(!Array.isArray(v))return[];const out=[...new Set(v.map(x=>String(x??'').trim()).filter(Boolean))];if(out.length>10)throw new HttpError(400,'Choose at most 10 staff roles per ticket type.');if(out.some(x=>!SNOWFLAKE.test(x)))throw new HttpError(400,'Staff role IDs must be valid Discord IDs.');return out}
 function maybeUrl(v,allowToken=false){const s=String(v??'').trim();if(!s)return'';if(allowToken&&s==='{user_icon}')return s;if(!/^https:\/\//i.test(s))throw new HttpError(400,'Image fields must use HTTPS URLs.');if(s.length>1000)throw new HttpError(400,'Image URL is too long.');return s}
 function questions(v){if(!Array.isArray(v))return[];return v.map(x=>text(x,100,'')).filter(Boolean).slice(0,5)}
 function panelOptions(v,allowed,defaults){if(!Array.isArray(v))return defaults;return allowed.map(type=>{const row=v.find(x=>x?.type===type)||defaults.find(x=>x.type===type);return{type,label:text(row?.label,80,defaults.find(x=>x.type===type)?.label||type),enabled:Boolean(row?.enabled)}})}
@@ -87,7 +88,7 @@ async function handleConfig(req,res,user,id){
     const body=req.body||{};const s=body.settings||{};
     const settingRow={
       guild_id:guildId,
-      category_id:maybeSnowflake(s.category_id),log_channel_id:maybeSnowflake(s.log_channel_id),rating_channel_id:maybeSnowflake(s.rating_channel_id),verification_rating_channel_id:maybeSnowflake(s.verification_rating_channel_id)||null,staff_role_id:maybeSnowflake(s.staff_role_id),
+      category_id:maybeSnowflake(s.category_id),log_channel_id:maybeSnowflake(s.log_channel_id),rating_channel_id:maybeSnowflake(s.rating_channel_id),verification_rating_channel_id:maybeSnowflake(s.verification_rating_channel_id)||null,support_staff_role_ids:snowflakeIds(s.support_staff_role_ids),verify_staff_role_ids:snowflakeIds(s.verify_staff_role_ids),
       rating_title:text(s.rating_title,256,DEFAULT_SETTINGS.rating_title),rating_description:text(s.rating_description,1800,DEFAULT_SETTINGS.rating_description),rating_thumbnail_url:maybeUrl(s.rating_thumbnail_url,true)||null,rating_image_url:maybeUrl(s.rating_image_url)||null,rating_footer:text(s.rating_footer,256,DEFAULT_SETTINGS.rating_footer),
       ticket_panel_title:text(s.ticket_panel_title,256,DEFAULT_SETTINGS.ticket_panel_title),ticket_panel_description:text(s.ticket_panel_description,1800,DEFAULT_SETTINGS.ticket_panel_description),ticket_panel_footer:text(s.ticket_panel_footer,256,DEFAULT_SETTINGS.ticket_panel_footer),
       embed_color:HEX.test(String(s.embed_color||''))?`#${String(s.embed_color).replace('#','').toUpperCase()}`:'#FFD84D',category_overrides:s.category_overrides&&typeof s.category_overrides==='object'?s.category_overrides:{},configured_by:uid,updated_at:new Date().toISOString(),
