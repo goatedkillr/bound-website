@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import { databaseConfigured, databaseRest, databaseRpc } from '../server/database.js';
 import { getSession, requireSameOrigin } from '../server/auth.js';
 
-const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || process.env.BOUND_BOT_TOKEN;
 const BOUND_OWNER_IDS = new Set(['444659348854013955']);
 const SNOWFLAKE = /^\d{17,20}$/;
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -134,32 +133,6 @@ function rpcResult(value) {
   if (result?.success === false) throw new HttpError(400, result.message || 'The faction action could not be completed.');
   return result || {};
 }
-async function sendRewardDm(userId, balance) {
-  if (!DISCORD_BOT_TOKEN) return 'unavailable';
-  try {
-    const channelResponse = await fetchTimed('https://discord.com/api/v10/users/@me/channels', {
-      method: 'POST', headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ recipient_id: userId }),
-    });
-    if (!channelResponse.ok) return 'failed';
-    const channel = await channelResponse.json();
-    const messageResponse = await fetchTimed(`https://discord.com/api/v10/channels/${channel.id}/messages`, {
-      method: 'POST', headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [{ title: '10,000 Bonds added', description: 'Thanks for connecting your Discord account to the Bound dashboard. Your one-time global economy reward is ready.', color: 15690692, fields: [{ name: 'New Bonds balance', value: compactNumber(balance), inline: true }], footer: { text: 'Bound • Discord, but closer.' } }] }),
-    });
-    return messageResponse.ok ? 'sent' : 'failed';
-  } catch { return 'failed'; }
-}
-async function claimDashboardReward(user) {
-  const userId = discordUserId(user);
-  const rows = await rpc('claim_dashboard_connect_reward', { p_user_id: userId, p_auth_user_id: user.id });
-  const reward = rows?.[0] || { claimed: false, balance: 0, amount: 10000 };
-  if (reward.claimed) {
-    const dmStatus = await sendRewardDm(userId, reward.balance);
-    await safe(() => rest(`dashboard_connect_rewards?user_id=eq.${userId}`, { method: 'PATCH', body: { dm_status: dmStatus, dm_attempted_at: new Date().toISOString() } }), null);
-    reward.dm_status = dmStatus;
-  }
-  return reward;
-}
 async function patchOrInsert(table, guildId, patch, base = {}) {
   const cur = await rest(`${table}?select=guild_id&guild_id=eq.${guildId}`);
   if (cur?.length) return rest(`${table}?guild_id=eq.${guildId}`, { method: 'PATCH', body: { ...patch, updated_at: new Date().toISOString() } });
@@ -264,8 +237,7 @@ export default async function handler(req, res) {
         approvals = await safe(() => rest(`faction_server_approvals?select=guild_id,faction_id,enabled&guild_id=in.(${ids.join(',')})&enabled=eq.true`), []);
       }
       const am = new Map(activation.map(x => [x.guild_id, x])), fm = new Map(approvals.map(x => [x.guild_id, x]));
-      const reward = await claimDashboardReward(user);
-      const payload = { user: { id: uid, username: user.name || 'Discord user', display_name: user.name || 'Discord user', avatar_url: discordAvatarUrl(uid, user.avatar), is_bound_owner: BOUND_OWNER_IDS.has(uid), faction_leader: Boolean(globalFactionLeader), faction: globalFactionLeader?.faction || null }, reward, guilds: guilds.map(g => { const factionLeader = leaderGuildIds.has(g.id); const permissions = g.owner ? [...DASHBOARD_PERMISSIONS] : [...new Set([...(grantMap.get(g.id) || []), ...(factionLeader ? ['view_dashboard', 'manage_factions'] : [])])]; return { id: g.id, name: g.name, icon_url: iconUrl(g), owner: g.owner, faction_leader: factionLeader, faction_only: factionLeader && !g.owner && !grantMap.get(g.id)?.includes('view_dashboard'), permissions, bound_installed: am.has(g.id), tos_accepted: am.get(g.id)?.tos_accepted || false, faction_status: fm.has(g.id) ? 'approved' : 'awaiting_owner_approval' }; }), request_id: requestId };
+      const payload = { user: { id: uid, username: user.name || 'Discord user', display_name: user.name || 'Discord user', avatar_url: discordAvatarUrl(uid, user.avatar), is_bound_owner: BOUND_OWNER_IDS.has(uid), faction_leader: Boolean(globalFactionLeader), faction: globalFactionLeader?.faction || null }, guilds: guilds.map(g => { const factionLeader = leaderGuildIds.has(g.id); const permissions = g.owner ? [...DASHBOARD_PERMISSIONS] : [...new Set([...(grantMap.get(g.id) || []), ...(factionLeader ? ['view_dashboard', 'manage_factions'] : [])])]; return { id: g.id, name: g.name, icon_url: iconUrl(g), owner: g.owner, faction_leader: factionLeader, faction_only: factionLeader && !g.owner && !grantMap.get(g.id)?.includes('view_dashboard'), permissions, bound_installed: am.has(g.id), tos_accepted: am.get(g.id)?.tos_accepted || false, faction_status: fm.has(g.id) ? 'approved' : 'awaiting_owner_approval' }; }), request_id: requestId };
       // Fold the initially-selected guild's overview into the bootstrap
       // response when the client already knows which guild it wants (e.g.
       // the last one picked, remembered in localStorage) - saves a whole
