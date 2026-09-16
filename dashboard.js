@@ -64,6 +64,10 @@ function renderSignedOut(reason){
  if($('serverName'))$('serverName').textContent='Choose a server';
  applyServerIcon($('serverIcon'),null,'B');
  const gateHeading=document.querySelector('#authGate h2'),gateCopy=document.querySelector('#authGate p'),gateBtn=$('authDiscordBtn');
+ // isAuthCallback (above) disables this button while it says "Connecting…" -
+ // every path that lands back on the gate must re-enable it, or a failed
+ // callback leaves the button permanently stuck and unclickable.
+ if(gateBtn)gateBtn.disabled=false;
  if(noDiscord){
    if(gateHeading)gateHeading.textContent='Connect Discord to continue';
    if(gateCopy)gateCopy.textContent='You are signed in, but the dashboard still needs Discord to know which servers you can manage.';
@@ -122,7 +126,18 @@ async function bootstrap(){
     }else{
       await chooseGuild(selectedGuildId,false);
     }
-  }catch(e){console.error(e);toast('Dashboard unavailable',e.message);$('authGate')?.classList.remove('hidden')}finally{bootstrapRunning=false}
+  }catch(e){
+    console.error(e);
+    toast('Dashboard unavailable',e.message);
+    $('authGate')?.classList.remove('hidden');
+    // The isAuthCallback branch above leaves the gate stuck on "Connecting…"
+    // with the button disabled - if bootstrap then fails, that combination
+    // reads as a permanently frozen page instead of a real, retryable error.
+    const gateHeading=document.querySelector('#authGate h2'),gateCopy=document.querySelector('#authGate p'),gateBtn=$('authDiscordBtn');
+    if(gateHeading)gateHeading.textContent='Could not load your dashboard';
+    if(gateCopy)gateCopy.textContent=e.message||'Something went wrong loading your servers. Please try again.';
+    if(gateBtn){gateBtn.textContent='Try again';gateBtn.disabled=false}
+  }finally{bootstrapRunning=false}
 }
 function factionStatusText(s){return s==='approved'?'Faction approved':s==='needs_owner_migration'?'Needs owner migration':'Awaiting owner approval';}
 function renderGuildPicker(){const p=$('serverPicker');if(!p)return;if(!managedGuilds.length){p.innerHTML='<div class="picker-empty">No manageable servers found.</div>';return}p.innerHTML=managedGuilds.map(g=>`<button class="server-option ${g.id===selectedGuildId?'active':''}" data-guild-id="${g.id}">${g.icon_url?`<img src="${g.icon_url}" alt="${escapeHtml(g.name)} icon"><span style="display:none">${avatarFallback(g.name)}</span>`:`<span>${avatarFallback(g.name)}</span>`}<div><b>${escapeHtml(g.name)}</b><small>${g.bound_installed?'Bound detected':'Bound data not detected'} • ${factionStatusText(g.faction_status)}</small></div>${g.faction_status==='approved'?'<em>FACTION</em>':g.bound_installed?'<em>BOUND</em>':''}</button>`).join('');p.querySelectorAll('[data-guild-id]').forEach(b=>b.addEventListener('click',()=>chooseGuild(b.dataset.guildId,true)));}
