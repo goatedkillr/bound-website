@@ -150,7 +150,7 @@ async function sendRewardDm(userId, balance) {
   } catch { return 'failed'; }
 }
 async function claimDashboardReward(user) {
-  const userId = discordUserId(user);
+  const userId = user.discordUserId;
   const rows = await rpc('claim_dashboard_connect_reward', { p_user_id: userId, p_auth_user_id: user.id });
   const reward = rows?.[0] || { claimed: false, balance: 0, amount: 10000 };
   if (reward.claimed) {
@@ -264,7 +264,13 @@ export default async function handler(req, res) {
         approvals = await safe(() => rest(`faction_server_approvals?select=guild_id,faction_id,enabled&guild_id=in.(${ids.join(',')})&enabled=eq.true`), []);
       }
       const am = new Map(activation.map(x => [x.guild_id, x])), fm = new Map(approvals.map(x => [x.guild_id, x]));
-      const reward = await claimDashboardReward(user);
+      // Best-effort: the one-time connect bonus still expects a Supabase Auth
+      // UUID (p_auth_user_id) that no longer exists now that sessions are
+      // self-hosted Discord OAuth, so this always throws until that table/RPC
+      // is migrated off Supabase identity. It must never take the rest of
+      // bootstrap down with it - failing to grant a welcome bonus is far
+      // better than the whole dashboard refusing to load.
+      const reward = await safe(() => claimDashboardReward(user), { claimed: false, balance: 0, amount: 10000 });
       const payload = { user: { id: uid, username: user.name || 'Discord user', display_name: user.name || 'Discord user', avatar_url: discordAvatarUrl(uid, user.avatar), is_bound_owner: BOUND_OWNER_IDS.has(uid), faction_leader: Boolean(globalFactionLeader), faction: globalFactionLeader?.faction || null }, reward, guilds: guilds.map(g => { const factionLeader = leaderGuildIds.has(g.id); const permissions = g.owner ? [...DASHBOARD_PERMISSIONS] : [...new Set([...(grantMap.get(g.id) || []), ...(factionLeader ? ['view_dashboard', 'manage_factions'] : [])])]; return { id: g.id, name: g.name, icon_url: iconUrl(g), owner: g.owner, faction_leader: factionLeader, faction_only: factionLeader && !g.owner && !grantMap.get(g.id)?.includes('view_dashboard'), permissions, bound_installed: am.has(g.id), tos_accepted: am.get(g.id)?.tos_accepted || false, faction_status: fm.has(g.id) ? 'approved' : 'awaiting_owner_approval' }; }), request_id: requestId };
       // Fold the initially-selected guild's overview into the bootstrap
       // response when the client already knows which guild it wants (e.g.
