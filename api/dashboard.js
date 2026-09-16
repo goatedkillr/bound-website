@@ -300,10 +300,13 @@ export default async function handler(req, res) {
     }
 
     if (action === 'faction_deposit' && req.method === 'POST') {
-      const { faction } = await authorisedGlobalFactionLeader(uid);
+      await authorisedGlobalFactionLeader(uid);
       const amount = Number(req.body?.amount);
       if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 1_000_000_000) return send(res, 400, { error: 'Deposit must be between 1 and 1,000,000,000.', request_id: requestId }, requestId);
-      const result = rpcResult(await rpc('dashboard_deposit_to_faction', { p_user_id: uid, p_faction_id: faction.faction_id, p_amount: amount }));
+      // contribute_faction_treasury derives the faction from the caller's own
+      // faction_members row - it never took a p_faction_id (dashboard_deposit_to_faction
+      // was never a real Railway function; this is the bot's actual RPC).
+      const result = rpcResult(await rpc('contribute_faction_treasury', { p_user_id: uid, p_amount: amount }));
       return send(res, 200, { result, request_id: requestId }, requestId);
     }
 

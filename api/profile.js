@@ -10,17 +10,24 @@ export default async function handler(req,res){try{
  if(!databaseConfigured())return send(res,503,{error:'Missing Railway DATABASE_URL.'});
  const session=getSession(req);if(!session)return send(res,401,{error:'Sign in first.'});
  const uid=session.discordUserId;
- const [profiles,relationships,gagStats,activeGags,rpGiven,rpReceived,cache]=await Promise.all([
+ const [profiles,relationships,gagStats,activeGags,rpGiven,rpReceived,gagPairs,cache]=await Promise.all([
   safe(()=>rest(`ownership_profiles?select=*&user_id=eq.${uid}`)),
   safe(()=>rest(`ownership_relationships?select=*&or=(owner_id.eq.${uid},sub_id.eq.${uid})&status=eq.active&order=updated_at.desc`)),
   safe(()=>rest(`bdsm_gag_user_stats?select=*&user_id=eq.${uid}`)),
   safe(()=>rest(`bdsm_active_gags?select=*&gagged_user_id=eq.${uid}&active=eq.true&order=started_at.desc&limit=1`)),
   safe(()=>rest(`rp_action_counts?select=action,target_user_id,count&actor_user_id=eq.${uid}`)),
   safe(()=>rest(`rp_action_counts?select=action,actor_user_id,count&target_user_id=eq.${uid}`)),
+  safe(()=>rest(`bdsm_gag_pair_stats?select=owner_id,sub_id,total_gags&or=(owner_id.eq.${uid},sub_id.eq.${uid})`)),
   safe(()=>rest(`bdsm_discord_user_cache?select=user_id,display_name,avatar_url`)),
  ]);
  const p=profiles[0]||{};const cm=new Map(cache.map(x=>[x.user_id,x]));
- const rels=relationships.map(r=>{const otherId=r.owner_id===uid?r.sub_id:r.owner_id;const other=cm.get(otherId)||{};return{relationship_id:r.relationship_id,role:r.owner_id===uid?'owner':'sub',other_user_id:otherId,other_name:other.display_name||otherId,other_avatar:other.avatar_url||null,relationship_name:r.relationship_name||null,bond_level:r.bond_level||0,bond_xp:Number(r.bond_xp||0),interactions:Number(r.interactions_count||0),gag_count:Number(r.gag_count||0),currently_gagged:Boolean(r.currently_gagged),claimed_at:r.claimed_at}});
+ // interactions/gag_count used to read ownership_relationships.interactions_count/
+ // gag_count directly - neither column exists on that table, so both always read
+ // as 0. Real per-partner data lives elsewhere: RP interaction totals are already
+ // fetched above (rpGiven/rpReceived just weren't split out per partner), and gag
+ // counts live in the separate bdsm_gag_pair_stats table keyed by (owner_id,sub_id).
+ const gagPairMap=new Map(gagPairs.map(g=>[`${g.owner_id}:${g.sub_id}`,Number(g.total_gags||0)]));
+ const rels=relationships.map(r=>{const otherId=r.owner_id===uid?r.sub_id:r.owner_id;const other=cm.get(otherId)||{};const interactions=rpGiven.filter(x=>x.target_user_id===otherId).reduce((s,x)=>s+Number(x.count||0),0)+rpReceived.filter(x=>x.actor_user_id===otherId).reduce((s,x)=>s+Number(x.count||0),0);return{relationship_id:r.relationship_id,role:r.owner_id===uid?'owner':'sub',other_user_id:otherId,other_name:other.display_name||otherId,other_avatar:other.avatar_url||null,relationship_name:r.relationship_name||null,bond_level:r.bond_level||0,bond_xp:Number(r.bond_xp||0),interactions,gag_count:gagPairMap.get(`${r.owner_id}:${r.sub_id}`)||0,currently_gagged:Boolean(r.currently_gagged),claimed_at:r.claimed_at}});
  const aggregate=(rows)=>{const out={};for(const r of rows)out[r.action]=(out[r.action]||0)+Number(r.count||0);return out};
  const given=aggregate(rpGiven),received=aggregate(rpReceived);const allActions=[...new Set([...Object.keys(given),...Object.keys(received)])];
  const rp=allActions.map(action=>({action,given:given[action]||0,received:received[action]||0,total:(given[action]||0)+(received[action]||0)})).sort((a,b)=>b.total-a.total);

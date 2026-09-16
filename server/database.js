@@ -4,9 +4,9 @@ import pg from 'pg';
 const { Pool } = pg;
 
 const TABLES = new Set([
-  'bdsm_active_gags', 'bdsm_discord_user_cache', 'bdsm_gag_user_stats', 'bdsm_safety_config',
+  'bdsm_active_gags', 'bdsm_discord_user_cache', 'bdsm_gag_pair_stats', 'bdsm_gag_user_stats', 'bdsm_safety_config',
   'bound_guild_activation', 'bound_private_build_controls', 'bound_private_dashboard_servers',
-  'dashboard_accounts', 'dashboard_guild_permissions',
+  'dashboard_guild_permissions',
   'data_deletion_requests', 'faction_applications', 'faction_heist_statistics', 'faction_members',
   'faction_server_approvals', 'faction_stock_portfolios', 'faction_treasury_deposits',
   'faction_upgrades', 'factions', 'game_activity_history', 'guild_settings', 'ownership_cages',
@@ -19,12 +19,12 @@ const TABLES = new Set([
 const PRIMARY_KEYS = new Map([
   ['bdsm_active_gags', ['gagged_user_id']],
   ['bdsm_discord_user_cache', ['user_id']],
+  ['bdsm_gag_pair_stats', ['owner_id', 'sub_id']],
   ['bdsm_gag_user_stats', ['user_id']],
   ['bdsm_safety_config', ['guild_id']],
   ['bound_guild_activation', ['guild_id']],
   ['bound_private_build_controls', ['guild_id']],
   ['bound_private_dashboard_servers', ['guild_id']],
-  ['dashboard_accounts', ['auth_user_id']],
   ['dashboard_guild_permissions', ['guild_id', 'user_id']],
   ['data_deletion_requests', ['id']],
   ['faction_applications', ['id']],
@@ -68,7 +68,7 @@ const JSON_COLUMNS = new Set([
 const RPCS = new Map([
   ['buy_faction_market_shares', { args: ['p_user_id', 'p_ticker', 'p_shares'] }],
   ['buy_faction_shop_item', { args: ['p_buyer_user_id', 'p_item_id'] }],
-  ['dashboard_deposit_to_faction', { args: ['p_user_id', 'p_faction_id', 'p_amount'] }],
+  ['contribute_faction_treasury', { args: ['p_user_id', 'p_amount'] }],
   ['manage_faction_membership', { args: ['p_action', 'p_actor_user_id', 'p_target_user_id', 'p_faction_id'] }],
   ['review_faction_application', { args: ['p_action', 'p_reviewer_user_id', 'p_application_id'] }],
   ['sell_faction_market_shares', { args: ['p_user_id', 'p_ticker', 'p_shares'] }],
