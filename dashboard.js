@@ -102,7 +102,6 @@ async function bootstrap(){
     // first paint versus always following up with a separate loadOverview().
     const d=await api('bootstrap',{guildId:selectedGuildId||undefined});
     managedGuilds=d.guilds||[];
-    if(d.reward?.claimed)toast('10,000 Bonds added',d.reward.dm_status==='sent'?'We sent the receipt to your Discord DMs.':'Your one-time dashboard connection reward is ready.');
     const u=d.user||{};
     $('authGate')?.classList.add('hidden');
     if($('userName'))$('userName').textContent=u.display_name||u.username||'Discord user';
